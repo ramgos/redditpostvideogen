@@ -2,6 +2,7 @@ import pyttsx3
 import praw
 import json
 import os
+import shutil
 from time import sleep
 from selenium import webdriver
 from selenium.webdriver.common.by import By
@@ -9,14 +10,9 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import TimeoutException
 
-# text to speach stuff
-'''
-engine = pyttsx3.init()
-engine.save_to_file('Hello World', 'test.mp3')
-engine.runAndWait()
-'''
 
 credentials = json.load(open('config.json'))
+engine = pyttsx3.init()
 
 
 # screenshot a webpage element given a selector, a webdriver and a file name to save to
@@ -27,10 +23,11 @@ def screenshot_element(csselctor, driver, file_location):
         )
     except TimeoutException:
         print("Something went wrong while waiting for an element to load...")
+        return
     image = driver.find_element\
         (By.CSS_SELECTOR, csselctor)
     driver.execute_script("arguments[0].scrollIntoView();", image)
-    sleep(5)
+    sleep(3)
     image.screenshot(file_location)
 
 
@@ -75,7 +72,13 @@ def screenshot_thread(data, wrkdir, headless=True):
     fox.find_element\
         (By.XPATH, "//*[text()[contains(.,'View Entire Disc')]]").click()
 
-    screenshot_element("#" + data['general']['css-selector'], fox, wrkdir + data['general']['id'] + '.png')
+    # screenshot body
+    screenshot_element\
+        (
+            "#" + data['general']['css-selector'],
+            fox,
+            wrkdir + data['general']['id'] + '.png'
+        )
 
     # a bit of a mess, but essentially it means: iterate over every
     # comment, but slice it so it will only take the comments it gathered data about
@@ -99,7 +102,7 @@ def grab_reddit_data(submission_id, size):
     )
 
     target_submission = reddit.submission(id=submission_id)
-    target_submission.comment_sort = "top"
+    # target_submission.comment_sort = "top"
 
     # general data regarding the post
     main_post_dict = \
@@ -165,25 +168,48 @@ def organize_work_directory(submission_id):
     cwd = os.getcwd()
     basepath = cwd + "/videos/"
 
-    data = grab_reddit_data(submission_id=submission_id, size=20)
+    data = grab_reddit_data(submission_id=submission_id, size=5)
+    general = data['general']
+    comment_data = data['comment_data']
+
+    # creating all needed folders
     mkdir_ifnotexist(cwd + "/videos")
 
-    mkdir_ifnotexist(basepath + data['general']['id'])
-    videopath = basepath + data['general']['id'] + "/"
+    mkdir_ifnotexist(basepath + general['id'])
+    videopath = basepath + general['id'] + "/"
 
-    mkdir_ifnotexist(videopath + "/body/")
-    mkdir_ifnotexist(videopath + "/clips/")
-    mkdir_ifnotexist(videopath + "/comments/")
-    mkdir_ifnotexist(videopath + "/screenshots/")
+    mkdir_ifnotexist(videopath + "screenshots/")
+    success = screenshot_thread(data=data, wrkdir=videopath + "screenshots/", headless=True)
 
-    for comment in data['comment_data']:
-        mkdir_ifnotexist(videopath + "/comments/" + comment['id'])
-
-    success = screenshot_thread(data=data, wrkdir=videopath + "/screenshots/")
     if success:
         print("success!")
     else:
         print(":(")
 
+    mkdir_ifnotexist(videopath + "/body/")
+    shutil.copy\
+        (
+            videopath + "screenshots/" + general['id'] + ".png",
+            videopath + "body/"
+        )
+    engine.save_to_file(general['title'], videopath + "body/" + general['id'] + ".mp3")
+    engine.runAndWait()
 
-organize_work_directory('lhk6dg')
+    mkdir_ifnotexist(videopath + "clips/")
+    mkdir_ifnotexist(videopath + "comments/")
+
+    # Here should come the text-to-speech generation of the post's body
+    # . . .
+
+    for comment in comment_data:
+        dest = videopath + "comments/" + comment['id']
+        src = videopath + "screenshots/" + comment['id'] + ".png"
+
+        mkdir_ifnotexist(dest)
+        shutil.copy(src, dest)
+
+        engine.save_to_file(comment['body'], dest + "/" + comment['id'] + ".mp3")
+        engine.runAndWait()
+
+
+organize_work_directory('lhxkmf')
