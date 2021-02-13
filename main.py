@@ -2,17 +2,40 @@ import pyttsx3
 import praw
 import json
 import os
+import os.path
 import shutil
+from moviepy.editor import *
 from time import sleep
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import TimeoutException
+from PIL import Image
+from pathlib import Path
+from mutagen.mp3 import MP3
+import math
 
+rate = 135  # normal speed
+res = 1920, 1080 # resolution of video
 
 credentials = json.load(open('config.json'))
 engine = pyttsx3.init()
+engine.setProperty('rate', rate)
+
+
+def resize_to_screenbounds(filename, filedest, resolution=(1920, 1080)):
+    im = Image.open(filename)
+    size = im.size
+    if size[0] / size[1] >= 1:  # if the image is horizontal
+        ratio = size[1]/size[0]
+        y = math.floor(ratio * resolution[0])
+        resized_image = im.resize((resolution[0], y))
+        resized_image.save(filedest, format='png')
+    else:
+        ratio = size[0]/size[1]
+        x = math.floor(ratio * resolution[1])
+        resized_image = im.resize((x, resolution[1]))
 
 
 # screenshot a webpage element given a selector, a webdriver and a file name to save to
@@ -164,11 +187,14 @@ def mkdir_ifnotexist(dirname):
         os.mkdir(dirname)
 
 
-def organize_work_directory(submission_id):
+# this creats and organizes a directory containing all important
+# material for the creation of the video
+
+# returns video path
+def organize_work_directory(data):
     cwd = os.getcwd()
     basepath = cwd + "/videos/"
 
-    data = grab_reddit_data(submission_id=submission_id, size=5)
     general = data['general']
     comment_data = data['comment_data']
 
@@ -179,37 +205,73 @@ def organize_work_directory(submission_id):
     videopath = basepath + general['id'] + "/"
 
     mkdir_ifnotexist(videopath + "screenshots/")
+    mkdir_ifnotexist(videopath + "clips/")
+    mkdir_ifnotexist(videopath + "comments/")
+    mkdir_ifnotexist(videopath + "body/")
     success = screenshot_thread(data=data, wrkdir=videopath + "screenshots/", headless=True)
 
+    # TODO handle screenshot errors
     if success:
         print("success!")
     else:
         print(":(")
 
-    mkdir_ifnotexist(videopath + "/body/")
-    shutil.copy\
-        (
-            videopath + "screenshots/" + general['id'] + ".png",
-            videopath + "body/"
-        )
-    engine.save_to_file(general['title'], videopath + "body/" + general['id'] + ".mp3")
+    bodydest = videopath + "body/" + general['id']
+    bodysrc = videopath + "screenshots/" + general['id'] + ".png"
+
+    bodydest_path = Path(bodydest + ".png")
+    bodysrc_path = Path(bodysrc)
+
+    resize_to_screenbounds(filename=bodysrc_path, filedest=bodydest_path)
+    engine.save_to_file(general['title'], bodydest + ".mp3")
     engine.runAndWait()
 
-    mkdir_ifnotexist(videopath + "clips/")
-    mkdir_ifnotexist(videopath + "comments/")
-
-    # Here should come the text-to-speech generation of the post's body
-    # . . .
-
     for comment in comment_data:
-        dest = videopath + "comments/" + comment['id']
+        dest = videopath + "comments/" + comment['id'] + "/"
         src = videopath + "screenshots/" + comment['id'] + ".png"
 
         mkdir_ifnotexist(dest)
-        shutil.copy(src, dest)
+        src_path = Path(src)
+        dest_path = Path(dest + comment['id'] + ".png")
+        resize_to_screenbounds(filename=src_path, filedest=dest_path)
 
-        engine.save_to_file(comment['body'], dest + "/" + comment['id'] + ".mp3")
+        engine.save_to_file(comment['body'], dest + comment['id'] + ".mp3")
         engine.runAndWait()
+    return videopath
 
 
-organize_work_directory('lhxkmf')
+# generates clips from material
+def generate_clips(videopath, data):
+    general = data['general']
+    comment_data = data['comment_data']
+
+    clips = []
+
+    # generate clip for body
+    bodymp3_path = videopath + "body/" + general['id'] + ".mp3"
+    bodyimage_path = videopath + "body/" + general['id'] + ".png"
+
+    bodyimage = ImageClip(bodyimage_path).set_duration(1)
+    # bodyimage.size = res
+    bodyimage.audio = AudioFileClip(bodymp3_path)
+
+    clips.append(bodyimage)
+
+    for comment in comment_data:
+        commentimage_path = videopath + "comments/" + comment['id'] + "/" + comment['id'] + ".png"
+        commentmp3_path = videopath + "comments/" + comment['id'] + "/" + comment['id'] + ".mp3"
+
+        commentimage = ImageClip(commentimage_path).set_duration(1)
+        # commentimage.size = res
+        commentimage.audio = AudioFileClip(commentmp3_path)
+
+        clips.append(commentimage)
+
+    for index, clip in enumerate(clips):
+        clip.write_videofile(videopath + "clips/" + str(index) + ".mp4", fps=30)
+
+
+submission_id = 'lhxkmf'
+data = grab_reddit_data(submission_id=submission_id, size=5)
+videopath = organize_work_directory(data=data)
+generate_clips(videopath=videopath, data=data)
