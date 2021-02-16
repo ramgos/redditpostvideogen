@@ -13,6 +13,8 @@ from PIL import Image
 from pathlib import Path
 import math
 
+# TODO go over warnings presented by IDE
+
 rate = 135  # normal speed
 res = 1920, 1080  # resolution of video
 
@@ -24,12 +26,18 @@ credentials = json.load(open('config.json'))
 engine = pyttsx3.init()
 engine.setProperty('rate', rate)
 
+# render settings
+fps = 15  # fps of final video
+bgaudiovolume = 0.2
+
 videobg = "Flavor/BG.mp4"
 videocensor = "Flavor/censor2.mp4"
+bgmusic = "Flavor/BGMUSIC.mp3"
 
 videocensorclip = VideoFileClip(videocensor)
-videobgclip = VideoFileClip(videobg)  # TODO Make loopable
+videobgclip = VideoFileClip(videobg)
 # (make function to create a video clip of space background of any length
+bgmusicclip = AudioFileClip(bgmusic)
 
 
 def resize_to_screenbounds(filename, filedest, resolution=(1920, 1080)):
@@ -257,6 +265,49 @@ def limit_high(a, b):
         return b
 
 
+def reverse_clip(clip):
+    new_clip = clip.fl_time(lambda t: clip.duration-t)
+    new_clip.duration = clip.duration
+    return new_clip
+
+
+def make_bg_video(bgbase, clip):
+    dev = math.floor(clip.duration / bgbase.duration)
+    rem = clip.duration % bgbase.duration
+
+    if dev == 0:
+        return bgbase.subclip(0, rem)
+    else:
+        clips = []
+        for i in range(dev):
+            if i % 2 == 1:
+                clips.append(bgbase)
+            else:
+                clips.append(reverse_clip(bgbase))
+        if rem > 0:
+            clips.append(bgbase.subclip(0, rem))
+
+    finalclip = concatenate_videoclips(clips=clips)
+    return finalclip
+
+
+def make_bg_audio(bgbase, clip):
+    dev = math.floor(clip.duration/ bgbase.duration)
+    rem = clip.duration % bgbase.duration
+
+    if dev == 0:
+        return bgbase.subclip(0, rem)
+    else:
+        clips = []
+        for _ in range(dev):
+            clips.append(bgbase)
+        if rem > 0:
+            clips.append(bgbase.subclip(0, rem))
+
+    finalclip = concatenate_videoclips(clips=clips)
+    return finalclip
+
+
 # generates clips from material
 # TODO Change this function to not depend on data, but only on folder structure
 def generate_clips(videopath, data):
@@ -272,7 +323,8 @@ def generate_clips(videopath, data):
     bodyimage = ImageClip(bodyimage_path).set_duration(bodyimage_audio.duration)
     bodyimage.audio = bodyimage_audio
 
-    bodybg = videobgclip.subclip(0, limit_high(bodyimage.duration, videobgclip.duration))
+    # bodybg = videobgclip.subclip(0, limit_high(bodyimage.duration, videobgclip.duration))
+    bodybg = make_bg_video(bgbase=videobgclip, clip=bodyimage)
     bodyimagefinal = CompositeVideoClip([bodybg, bodyimage.set_position("center")], size=res)
 
     clips.append(bodyimagefinal)
@@ -285,7 +337,8 @@ def generate_clips(videopath, data):
         commentimage = ImageClip(commentimage_path).set_duration(commentimage_audio.duration)
         commentimage.audio = commentimage_audio
 
-        commentbg = videobgclip.subclip(0, limit_high(commentimage.duration, videobgclip.duration))
+        # commentbg = videobgclip.subclip(0, limit_high(commentimage.duration, videobgclip.duration))
+        commentbg = make_bg_video(bgbase=videobgclip, clip=commentimage)
         commentimagefinal = CompositeVideoClip([commentbg, commentimage.set_position("center")], size=res)
 
         clips.append(commentimagefinal)
@@ -294,8 +347,13 @@ def generate_clips(videopath, data):
     # remove the last beep from video
     clips.pop(-1)
 
-    finalclip = concatenate_videoclips(clips=clips)
-    finalclip.write_videofile("test.mp4", fps=15)
+    mergedclip = concatenate_videoclips(clips=clips)
+    audiomain = mergedclip.audio
+    audiobg = make_bg_audio(bgbase=bgmusicclip, clip=mergedclip)
+    finalaudio = CompositeAudioClip([audiomain, audiobg.volumex(0.2)])
+
+    mergedclip.audio = finalaudio
+    mergedclip.write_videofile(general['id'] + ".mp4", fps=fps)
 
 
 submission_id = 'lhxkmf'
