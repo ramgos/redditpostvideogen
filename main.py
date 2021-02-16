@@ -1,9 +1,7 @@
 import pyttsx3
 import praw
 import json
-import os
 import os.path
-import shutil
 from moviepy.editor import *
 from time import sleep
 from selenium import webdriver
@@ -13,15 +11,25 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import TimeoutException
 from PIL import Image
 from pathlib import Path
-from mutagen.mp3 import MP3
 import math
 
 rate = 135  # normal speed
-res = 1920, 1080 # resolution of video
+res = 1920, 1080  # resolution of video
 
+# load private information
 credentials = json.load(open('config.json'))
+
+# setup tts engine
+# TODO find better tts solution
 engine = pyttsx3.init()
 engine.setProperty('rate', rate)
+
+videobg = "Flavor/BG.mp4"
+videocensor = "Flavor/censor2.mp4"
+
+videocensorclip = VideoFileClip(videocensor)
+videobgclip = VideoFileClip(videobg)  # TODO Make loopable
+# (make function to create a video clip of space background of any length
 
 
 def resize_to_screenbounds(filename, filedest, resolution=(1920, 1080)):
@@ -212,7 +220,7 @@ def organize_work_directory(data):
 
     # TODO handle screenshot errors
     if success:
-        print("success!")
+        print("success! screenshots saved succesfully")
     else:
         print(":(")
 
@@ -240,35 +248,54 @@ def organize_work_directory(data):
     return videopath
 
 
+# a function of this prob already exists and done better, couldn't bother to find it
+# online. was faster to simply write it
+def limit_high(a, b):
+    if a < b:
+        return a
+    else:
+        return b
+
+
 # generates clips from material
+# TODO Change this function to not depend on data, but only on folder structure
 def generate_clips(videopath, data):
     general = data['general']
     comment_data = data['comment_data']
-
     clips = []
 
     # generate clip for body
     bodymp3_path = videopath + "body/" + general['id'] + ".mp3"
     bodyimage_path = videopath + "body/" + general['id'] + ".png"
 
-    bodyimage = ImageClip(bodyimage_path).set_duration(1)
-    # bodyimage.size = res
-    bodyimage.audio = AudioFileClip(bodymp3_path)
+    bodyimage_audio = AudioFileClip(bodymp3_path)
+    bodyimage = ImageClip(bodyimage_path).set_duration(bodyimage_audio.duration)
+    bodyimage.audio = bodyimage_audio
 
-    clips.append(bodyimage)
+    bodybg = videobgclip.subclip(0, limit_high(bodyimage.duration, videobgclip.duration))
+    bodyimagefinal = CompositeVideoClip([bodybg, bodyimage.set_position("center")], size=res)
+
+    clips.append(bodyimagefinal)
 
     for comment in comment_data:
         commentimage_path = videopath + "comments/" + comment['id'] + "/" + comment['id'] + ".png"
         commentmp3_path = videopath + "comments/" + comment['id'] + "/" + comment['id'] + ".mp3"
 
-        commentimage = ImageClip(commentimage_path).set_duration(1)
-        # commentimage.size = res
-        commentimage.audio = AudioFileClip(commentmp3_path)
+        commentimage_audio = AudioFileClip(commentmp3_path)
+        commentimage = ImageClip(commentimage_path).set_duration(commentimage_audio.duration)
+        commentimage.audio = commentimage_audio
 
-        clips.append(commentimage)
+        commentbg = videobgclip.subclip(0, limit_high(commentimage.duration, videobgclip.duration))
+        commentimagefinal = CompositeVideoClip([commentbg, commentimage.set_position("center")], size=res)
 
-    for index, clip in enumerate(clips):
-        clip.write_videofile(videopath + "clips/" + str(index) + ".mp4", fps=30)
+        clips.append(commentimagefinal)
+        clips.append(videocensorclip)
+
+    # remove the last beep from video
+    clips.pop(-1)
+
+    finalclip = concatenate_videoclips(clips=clips)
+    finalclip.write_videofile("test.mp4", fps=15)
 
 
 submission_id = 'lhxkmf'
