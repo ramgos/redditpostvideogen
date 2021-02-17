@@ -35,6 +35,7 @@ fps = videoprofile['video']['fps']
 bgaudiovolume = videoprofile['video']['bgaudiovolume']
 res = tuple(videoprofile['video']['res'])
 wait_before_start = videoprofile['video']['wait_before_start']
+enable_transitions = videoprofile['video']['enable_transitions']
 
 videobg = videoprofile['assets']['videobg']
 videocensor = videoprofile['assets']['videocensor']
@@ -46,9 +47,9 @@ bgmusicclip = AudioFileClip(bgmusic)
 
 
 def balcon_tts(voicename, speed, volume, outputfile, text):
-    wrkdir = pathlib.Path(outputfile).absolute()
+    wrkdir = pathlib.Path(outputfile).absolute().parent
 
-    with open(str(wrkdir) + "textholder.txt", "w") as textholder:
+    with open(str(wrkdir) + "/" + "textholder.txt", "w") as textholder:
         textholder.write(text)
 
     finalvoicename = '"' + voicename + '"'
@@ -59,7 +60,7 @@ def balcon_tts(voicename, speed, volume, outputfile, text):
              speed=speed,
              volume=volume,
              outputfile=outputfile,
-             inputfile=str(wrkdir) + "textholder.txt")
+             inputfile=str(wrkdir) + "/" + "textholder.txt")
 
     subprocess.run(command)
 
@@ -350,8 +351,7 @@ def make_bg_audio(bgbase, clip):
     return finalclip
 
 
-# generates clips from material
-# TODO Change this function to not depend on data, but only on folder structure
+# generates clips from material and renders a final video
 # TODO Add start and end clip
 def generate_clips(videopath, data):
     general = data['general']
@@ -385,10 +385,11 @@ def generate_clips(videopath, data):
         commentimagefinal = CompositeVideoClip([commentbg, commentimage.set_position("center")], size=res)
 
         clips.append(commentimagefinal)
-        clips.append(videocensorclip)
+        if enable_transitions == 1:
+            clips.append(videocensorclip)
 
     # remove the last beep from video
-    clips.pop(-1)
+    # clips.pop(-1)
 
     mergedclip = concatenate_videoclips(clips=clips)
     audiomain = mergedclip.audio
@@ -399,8 +400,58 @@ def generate_clips(videopath, data):
     mergedclip.write_videofile(general['id'] + ".mp4", fps=fps)
 
 
+# essentially works like generate_clips() but doesn't require the reddit data
+# dictionary to work (you can use an existing reddit video folder)
+def generate_clips_folder_only(videopath):
+    clips = []
+
+    # generate clip for body
+    bodymp3_path = videopath + "body/" + [each for each in os.listdir(videopath + "body/") if each.endswith('.mp3')][0]
+    bodyimage_path = videopath + "body/" + [each for each in os.listdir(videopath + "body/") if each.endswith('.png')][0]
+
+    bodyimage_audio = AudioFileClip(bodymp3_path)
+    bodyimage = ImageClip(bodyimage_path).set_duration(bodyimage_audio.duration + wait_before_start)
+    bodyimage.audio = bodyimage_audio
+
+    bodyid = Path(bodyimage_path).stem
+
+    # bodybg = videobgclip.subclip(0, limit_high(bodyimage.duration, videobgclip.duration))
+    bodybg = make_bg_video(bgbase=videobgclip, clip=bodyimage)
+    bodyimagefinal = CompositeVideoClip([bodybg, bodyimage.set_position("center")], size=res)
+
+    clips.append(bodyimagefinal)
+
+    for item in os.scandir(videopath + "comments/"):
+        if item.is_dir():
+            commentmp3_path = item.path + "/" + [each for each in os.listdir(item.path) if each.endswith('.mp3')][0]
+            commentimage_path = item.path + "/" + [each for each in os.listdir(item.path) if each.endswith('.png')][0]
+
+            commentimage_audio = AudioFileClip(commentmp3_path)
+            commentimage = ImageClip(commentimage_path).set_duration(commentimage_audio.duration)
+            commentimage.audio = commentimage_audio
+
+            # commentbg = videobgclip.subclip(0, limit_high(commentimage.duration, videobgclip.duration))
+            commentbg = make_bg_video(bgbase=videobgclip, clip=commentimage)
+            commentimagefinal = CompositeVideoClip([commentbg, commentimage.set_position("center")], size=res)
+
+            clips.append(commentimagefinal)
+            if enable_transitions == 1:
+                clips.append(videocensorclip)
+
+    # remove the last beep from video
+    # clips.pop(-1)
+
+    mergedclip = concatenate_videoclips(clips=clips)
+    audiomain = mergedclip.audio
+    audiobg = make_bg_audio(bgbase=bgmusicclip, clip=mergedclip)
+    finalaudio = CompositeAudioClip([audiomain, audiobg.volumex(bgaudiovolume)])
+
+    mergedclip.audio = finalaudio
+    mergedclip.write_videofile(bodyid + ".mp4", fps=fps)
+
+
 if __name__ == '__main__':
     post_id = 'lhxkmf'
     r_data = grab_reddit_data(submission_id=post_id, size=5)
     video_path = organize_work_directory(data=r_data)
-    generate_clips(videopath=video_path, data=r_data)
+    generate_clips_folder_only(videopath=video_path)
