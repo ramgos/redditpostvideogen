@@ -1,4 +1,6 @@
 import pyttsx3
+import subprocess
+import pathlib
 import praw
 import json
 import os.path
@@ -13,31 +15,53 @@ from PIL import Image
 from pathlib import Path
 import math
 
-# TODO go over warnings presented by IDE
+# TODO Create automatic thumbnail
 
-rate = 135  # normal speed
-res = 1920, 1080  # resolution of video
+# rate = 135  # normal speed
 
 # load private information
 credentials = json.load(open('config.json'))
+videoprofile = json.load(open('videoexport.json'))
 
 # setup tts engine
-# TODO find better tts solution
-engine = pyttsx3.init()
-engine.setProperty('rate', rate)
+# engine = pyttsx3.init()
+# engine.setProperty('rate', rate)
 
-# render settings
-fps = 15  # fps of final video
-bgaudiovolume = 0.2
+ttsvoice = videoprofile['tts']['voice']
+ttsspeed = videoprofile['tts']['speed']
+ttsvolume = videoprofile['tts']['volume']
 
-videobg = "Flavor/BG.mp4"
-videocensor = "Flavor/censor2.mp4"
-bgmusic = "Flavor/BGMUSIC.mp3"
+fps = videoprofile['video']['fps']
+bgaudiovolume = videoprofile['video']['bgaudiovolume']
+res = tuple(videoprofile['video']['res'])
+wait_before_start = videoprofile['video']['wait_before_start']
+
+videobg = videoprofile['assets']['videobg']
+videocensor = videoprofile['assets']['videocensor']
+bgmusic = videoprofile['assets']['bgmusic']
 
 videocensorclip = VideoFileClip(videocensor)
 videobgclip = VideoFileClip(videobg)
-# (make function to create a video clip of space background of any length
 bgmusicclip = AudioFileClip(bgmusic)
+
+
+def balcon_tts(voicename, speed, volume, outputfile, text):
+    wrkdir = pathlib.Path(outputfile).absolute()
+
+    with open(str(wrkdir) + "textholder.txt", "w") as textholder:
+        textholder.write(text)
+
+    finalvoicename = '"' + voicename + '"'
+    template = "balcon -n {voicename} -s {speed} -v {volume} -w {outputfile} -f {inputfile}"
+    command = \
+        template.format\
+            (voicename=finalvoicename,
+             speed=speed,
+             volume=volume,
+             outputfile=outputfile,
+             inputfile=str(wrkdir) + "textholder.txt")
+
+    subprocess.run(command)
 
 
 def resize_to_screenbounds(filename, filedest, resolution=(1920, 1080)):
@@ -52,6 +76,7 @@ def resize_to_screenbounds(filename, filedest, resolution=(1920, 1080)):
         ratio = size[0]/size[1]
         x = math.floor(ratio * resolution[1])
         resized_image = im.resize((x, resolution[1]))
+        resized_image.save(filedest, format='png')
 
 
 # screenshot a webpage element given a selector, a webdriver and a file name to save to
@@ -157,7 +182,7 @@ def grab_reddit_data(submission_id, size):
     }
 
     # data is what will be returned by the function
-    data = \
+    reddit_data = \
     {
         "general": main_post_dict
     }
@@ -172,8 +197,10 @@ def grab_reddit_data(submission_id, size):
         }
         comment_data.append(cmnt)
 
-    data['comment_data'] = comment_data
-    return data
+    reddit_data['comment_data'] = comment_data
+    return reddit_data
+
+    # TODO Optional: Log post data
 
 
 '''
@@ -226,7 +253,7 @@ def organize_work_directory(data):
     mkdir_ifnotexist(videopath + "body/")
     success = screenshot_thread(data=data, wrkdir=videopath + "screenshots/", headless=True)
 
-    # TODO handle screenshot errors
+    # TODO Handle screenshot errors
     if success:
         print("success! screenshots saved succesfully")
     else:
@@ -239,8 +266,15 @@ def organize_work_directory(data):
     bodysrc_path = Path(bodysrc)
 
     resize_to_screenbounds(filename=bodysrc_path, filedest=bodydest_path)
-    engine.save_to_file(general['title'], bodydest + ".mp3")
-    engine.runAndWait()
+    # engine.save_to_file(general['title'], bodydest + ".mp3")
+    # engine.runAndWait()
+    bodysaveunder = bodydest + ".mp3"
+    balcon_tts\
+        (voicename=ttsvoice,
+         speed=ttsspeed,
+         volume=ttsvolume,
+         outputfile=bodysaveunder,
+         text=general['title'])
 
     for comment in comment_data:
         dest = videopath + "comments/" + comment['id'] + "/"
@@ -251,8 +285,16 @@ def organize_work_directory(data):
         dest_path = Path(dest + comment['id'] + ".png")
         resize_to_screenbounds(filename=src_path, filedest=dest_path)
 
-        engine.save_to_file(comment['body'], dest + comment['id'] + ".mp3")
-        engine.runAndWait()
+        # engine.save_to_file(comment['body'], dest + comment['id'] + ".mp3")
+        # engine.runAndWait()
+        commentsaveunder = dest + comment['id'] + ".mp3"
+        balcon_tts \
+            (voicename=ttsvoice,
+             speed=ttsspeed,
+             volume=ttsvolume,
+             outputfile=commentsaveunder,
+             text=comment['body'])
+
     return videopath
 
 
@@ -292,7 +334,7 @@ def make_bg_video(bgbase, clip):
 
 
 def make_bg_audio(bgbase, clip):
-    dev = math.floor(clip.duration/ bgbase.duration)
+    dev = math.floor(clip.duration / bgbase.duration)
     rem = clip.duration % bgbase.duration
 
     if dev == 0:
@@ -310,6 +352,7 @@ def make_bg_audio(bgbase, clip):
 
 # generates clips from material
 # TODO Change this function to not depend on data, but only on folder structure
+# TODO Add start and end clip
 def generate_clips(videopath, data):
     general = data['general']
     comment_data = data['comment_data']
@@ -320,7 +363,7 @@ def generate_clips(videopath, data):
     bodyimage_path = videopath + "body/" + general['id'] + ".png"
 
     bodyimage_audio = AudioFileClip(bodymp3_path)
-    bodyimage = ImageClip(bodyimage_path).set_duration(bodyimage_audio.duration)
+    bodyimage = ImageClip(bodyimage_path).set_duration(bodyimage_audio.duration + wait_before_start)
     bodyimage.audio = bodyimage_audio
 
     # bodybg = videobgclip.subclip(0, limit_high(bodyimage.duration, videobgclip.duration))
@@ -350,13 +393,14 @@ def generate_clips(videopath, data):
     mergedclip = concatenate_videoclips(clips=clips)
     audiomain = mergedclip.audio
     audiobg = make_bg_audio(bgbase=bgmusicclip, clip=mergedclip)
-    finalaudio = CompositeAudioClip([audiomain, audiobg.volumex(0.2)])
+    finalaudio = CompositeAudioClip([audiomain, audiobg.volumex(bgaudiovolume)])
 
     mergedclip.audio = finalaudio
     mergedclip.write_videofile(general['id'] + ".mp4", fps=fps)
 
 
-submission_id = 'lhxkmf'
-data = grab_reddit_data(submission_id=submission_id, size=5)
-videopath = organize_work_directory(data=data)
-generate_clips(videopath=videopath, data=data)
+if __name__ == '__main__':
+    post_id = 'lhxkmf'
+    r_data = grab_reddit_data(submission_id=post_id, size=5)
+    video_path = organize_work_directory(data=r_data)
+    generate_clips(videopath=video_path, data=r_data)

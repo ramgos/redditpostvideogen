@@ -1,0 +1,19 @@
+{
+  "tts": {
+    "voice": "ScanSoft Daniel_Full_22kHz",
+    "speed": 0,
+    "volume": 100
+  },
+  "video": {
+    "fps": 15,
+    "bgaudiovolume": 0.2,
+    "res": [1920, 1080],
+    "wait_before_start": 0.5
+  },
+  "assets": {
+    "videobg": "Flavor/BG.mp4",
+    "videocensor": "Flavor/censor2.mp4",
+    "bgmusic": "Flavor/BGMUSIC.mp3"
+  }
+
+}
