@@ -62,6 +62,7 @@ def balcon_tts(voicename, speed, volume, outputfile, text):
              outputfile=outputfile,
              inputfile=str(wrkdir) + "/" + "textholder.txt")
 
+    os.remove(str(wrkdir) + "/" + "textholder.txt")
     subprocess.run(command)
 
 
