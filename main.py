@@ -15,7 +15,16 @@ from PIL import Image
 from pathlib import Path
 import math
 
+'''
+NOTE: Known issue: if you have a whitespace in your path it would cause errors
+when trying to synthesize audio clips
+'''
+
+# TODO Add option to gather comments by video length rather than comment amount
+# TODO Handle Balcon TTS issues (like the whitespace in path)
 # TODO Create automatic thumbnail
+
+# TODO (low priority) Add more customization (Read authors, read upvote count, etc...)
 
 # rate = 135  # normal speed
 
@@ -27,6 +36,8 @@ videoprofile = json.load(open('videoexport.json'))
 # engine = pyttsx3.init()
 # engine.setProperty('rate', rate)
 
+post_id = videoprofile['info']['submission_id']
+
 ttsvoice = videoprofile['tts']['voice']
 ttsspeed = videoprofile['tts']['speed']
 ttsvolume = videoprofile['tts']['volume']
@@ -35,7 +46,9 @@ fps = videoprofile['video']['fps']
 bgaudiovolume = videoprofile['video']['bgaudiovolume']
 res = tuple(videoprofile['video']['res'])
 wait_before_start = videoprofile['video']['wait_before_start']
-enable_transitions = videoprofile['video']['enable_transitions']
+wait_between_comments = videoprofile['video']['wait_between_comments']
+enable_transitions = bool(videoprofile['video']['enable_transitions'])
+read_title_body = bool(videoprofile['video']['read_title_body'])
 
 videobg = videoprofile['assets']['videobg']
 videocensor = videoprofile['assets']['videocensor']
@@ -49,7 +62,7 @@ bgmusicclip = AudioFileClip(bgmusic)
 def balcon_tts(voicename, speed, volume, outputfile, text):
     wrkdir = pathlib.Path(outputfile).absolute().parent
 
-    with open(str(wrkdir) + "/" + "textholder.txt", "w") as textholder:
+    with open(str(wrkdir) + "/" + "textholder.txt", "w", encoding="utf-8") as textholder:
         textholder.write(text)
 
     finalvoicename = '"' + voicename + '"'
@@ -62,8 +75,8 @@ def balcon_tts(voicename, speed, volume, outputfile, text):
              outputfile=outputfile,
              inputfile=str(wrkdir) + "/" + "textholder.txt")
 
-    os.remove(str(wrkdir) + "/" + "textholder.txt")
     subprocess.run(command)
+    os.remove(str(wrkdir) + "/" + "textholder.txt")
 
 
 def resize_to_screenbounds(filename, filedest, resolution=(1920, 1080)):
@@ -175,6 +188,7 @@ def grab_reddit_data(submission_id, size):
     {
         "id": submission_id,
         "title": target_submission.title,
+        "body": target_submission.selftext,
         "upvotes": target_submission.score,
         "subreddit": target_submission.subreddit_name_prefixed,
         "comments": target_submission.comments,
@@ -202,7 +216,7 @@ def grab_reddit_data(submission_id, size):
     reddit_data['comment_data'] = comment_data
     return reddit_data
 
-    # TODO Optional: Log post data
+    # TODO (Low priority) Optional: Log post data
 
 
 '''
@@ -253,6 +267,7 @@ def organize_work_directory(data):
     mkdir_ifnotexist(videopath + "clips/")
     mkdir_ifnotexist(videopath + "comments/")
     mkdir_ifnotexist(videopath + "body/")
+
     success = screenshot_thread(data=data, wrkdir=videopath + "screenshots/", headless=True)
 
     # TODO Handle screenshot errors
@@ -271,12 +286,17 @@ def organize_work_directory(data):
     # engine.save_to_file(general['title'], bodydest + ".mp3")
     # engine.runAndWait()
     bodysaveunder = bodydest + ".mp3"
+    additional_text = ""  # text that comes in addition after the reading of the title
+    if read_title_body:
+        additional_text += " "
+        additional_text += general['body']
+
     balcon_tts\
         (voicename=ttsvoice,
          speed=ttsspeed,
          volume=ttsvolume,
          outputfile=bodysaveunder,
-         text=general['title'])
+         text=general['title'] + additional_text)
 
     for comment in comment_data:
         dest = videopath + "comments/" + comment['id'] + "/"
@@ -428,7 +448,8 @@ def generate_clips_folder_only(videopath):
             commentimage_path = item.path + "/" + [each for each in os.listdir(item.path) if each.endswith('.png')][0]
 
             commentimage_audio = AudioFileClip(commentmp3_path)
-            commentimage = ImageClip(commentimage_path).set_duration(commentimage_audio.duration)
+            commentimage = ImageClip(commentimage_path).\
+                set_duration(commentimage_audio.duration + wait_between_comments)
             commentimage.audio = commentimage_audio
 
             # commentbg = videobgclip.subclip(0, limit_high(commentimage.duration, videobgclip.duration))
@@ -436,7 +457,7 @@ def generate_clips_folder_only(videopath):
             commentimagefinal = CompositeVideoClip([commentbg, commentimage.set_position("center")], size=res)
 
             clips.append(commentimagefinal)
-            if enable_transitions == 1:
+            if enable_transitions:
                 clips.append(videocensorclip)
 
     # remove the last beep from video
@@ -452,7 +473,6 @@ def generate_clips_folder_only(videopath):
 
 
 if __name__ == '__main__':
-    post_id = 'lhxkmf'
-    r_data = grab_reddit_data(submission_id=post_id, size=5)
+    r_data = grab_reddit_data(submission_id=post_id, size=1)
     video_path = organize_work_directory(data=r_data)
     generate_clips_folder_only(videopath=video_path)

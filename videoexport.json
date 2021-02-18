@@ -1,4 +1,7 @@
 {
+  "info": {
+    "submission_id":""
+  },
   "tts": {
     "voice": "ScanSoft Daniel_Full_22kHz",
     "speed": 0,
@@ -9,7 +12,9 @@
     "bgaudiovolume": 0.2,
     "res": [1920, 1080],
     "wait_before_start": 0.5,
-    "enable_transitions": 1
+    "wait_between_comments": 0,
+    "enable_transitions": 1,
+    "read_title_body": 1
   },
   "assets": {
     "videobg": "Flavor/BG.mp4",
