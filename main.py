@@ -25,6 +25,7 @@ when trying to synthesize audio clips
 # TODO Create automatic thumbnail
 
 # TODO (low priority) Add more customization (Read authors, read upvote count, etc...)
+# More ideas for cusstomization: Skip over comments that are longer that N characters
 
 # rate = 135  # normal speed
 
@@ -37,6 +38,8 @@ videoprofile = json.load(open('videoexport.json'))
 # engine.setProperty('rate', rate)
 
 post_id = videoprofile['info']['submission_id']
+
+wait_for_element_to_load = videoprofile['technical']['wait_for_elements_to_load']
 
 ttsvoice = videoprofile['tts']['voice']
 ttsspeed = videoprofile['tts']['speed']
@@ -97,7 +100,7 @@ def resize_to_screenbounds(filename, filedest, resolution=(1920, 1080)):
 # screenshot a webpage element given a selector, a webdriver and a file name to save to
 def screenshot_element(csselctor, driver, file_location):
     try:
-        WebDriverWait(driver, 10).until(
+        WebDriverWait(driver, wait_for_element_to_load).until(
             EC.presence_of_element_located((By.CSS_SELECTOR, csselctor))
         )
     except TimeoutException:
@@ -122,8 +125,9 @@ def screenshot_thread(data, wrkdir, headless=True):
     fox.get(data['general']['url'])
 
     # change to darkmode
+    # TODO Except TimeoutException Properly
     try:
-        WebDriverWait(fox, 10).until(
+        WebDriverWait(fox, wait_for_element_to_load).until(
             EC.element_to_be_clickable((By.ID, "USER_DROPDOWN_ID"))
         )
     except TimeoutException:
@@ -132,7 +136,7 @@ def screenshot_thread(data, wrkdir, headless=True):
     fox.find_element(By.ID, "USER_DROPDOWN_ID").click()
 
     try:
-        WebDriverWait(fox, 10).until(
+        WebDriverWait(fox, wait_for_element_to_load).until(
             EC.element_to_be_clickable((By.XPATH, "//*[text()[contains(.,'Night Mode')]]"))
         )
     except TimeoutException:
@@ -142,7 +146,7 @@ def screenshot_thread(data, wrkdir, headless=True):
         (By.XPATH, "//*[text()[contains(.,'Night Mode')]]").click()
 
     try:
-        WebDriverWait(fox, 10).until(
+        WebDriverWait(fox, wait_for_element_to_load).until(
             EC.element_to_be_clickable((By.XPATH, "//*[text()[contains(.,'View Entire Disc')]]"))
         )
     except TimeoutException:
@@ -330,7 +334,7 @@ def limit_high(a, b):
 
 
 def reverse_clip(clip):
-    new_clip = clip.fl_time(lambda t: clip.duration-t)
+    new_clip = clip.fl_time(lambda t: clip.duration-1-t)
     new_clip.duration = clip.duration
     return new_clip
 
@@ -368,7 +372,7 @@ def make_bg_audio(bgbase, clip):
         if rem > 0:
             clips.append(bgbase.subclip(0, rem))
 
-    finalclip = concatenate_videoclips(clips=clips)
+    finalclip = concatenate_audioclips(clips=clips)
     return finalclip
 
 

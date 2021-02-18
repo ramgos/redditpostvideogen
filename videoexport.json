@@ -20,6 +20,8 @@
     "videobg": "Flavor/BG.mp4",
     "videocensor": "Flavor/censor2.mp4",
     "bgmusic": "Flavor/BGMUSIC.mp3"
+  },
+  "technical": {
+    "wait_for_elements_to_load": 60
   }
-
 }
