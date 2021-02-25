@@ -112,7 +112,7 @@ def draw_colored_text(image, text_data, data, font):
         if word == "\n":
             pos = start_x, pos[1] + data['thumbnail_data']['font']['vertical_spacing']
         elif word == "...":
-            draw.text(pos, "...", font=font, fill=last_color)
+            draw.text(pos, "...", font=font, fill=tuple(last_color))
         else:
             word_content = word[0]
             word_is_colored = word[1]
