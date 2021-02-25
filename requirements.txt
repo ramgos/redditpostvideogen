@@ -7,7 +7,9 @@ gTTS==2.2.1
 idna==2.10
 imageio==2.9.0
 imageio-ffmpeg==0.4.3
+joblib==1.0.1
 moviepy==1.0.3
+nltk==3.5
 numpy==1.20.1
 Pillow==8.1.0
 praw==7.1.0
@@ -16,6 +18,8 @@ proglog==0.1.9
 pypiwin32==223
 pyttsx3==2.90
 pywin32==300
+rake-nltk==1.0.4
+regex==2020.11.13
 requests==2.25.1
 selenium==3.141.0
 six==1.15.0

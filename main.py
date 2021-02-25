@@ -1,4 +1,3 @@
-import pyttsx3
 import subprocess
 import pathlib
 import praw
@@ -14,7 +13,6 @@ from selenium.common.exceptions import TimeoutException
 from PIL import Image
 from pathlib import Path
 import math
-
 '''
 NOTE: Known issue: if you have a whitespace in your path it would cause errors
 when trying to synthesize audio clips
@@ -22,44 +20,16 @@ when trying to synthesize audio clips
 
 # TODO Add option to gather comments by video length rather than comment amount
 # TODO Handle Balcon TTS issues (like the whitespace in path)
-# TODO Create automatic thumbnail
+# TODO Code multiple posts export
+#   - Each video needs a seperate videoexport.json of itself,
+#   an image which will be placed on top of the thumbnail, a defualt image
+#   incase a custom image for the thumbnail isn't provided.
 
-# TODO (low priority) Add more customization (Read authors, read upvote count, etc...)
-# More ideas for cusstomization: Skip over comments that are longer that N characters
-
-# rate = 135  # normal speed
+# LOWPRIORITY Add more customization (Read authors, read upvote count, etc...)
+#   More ideas for cusstomization: Skip over comments that are longer that N characters
 
 # load private information
 credentials = json.load(open('config.json'))
-videoprofile = json.load(open('videoexport.json'))
-
-# setup tts engine
-# engine = pyttsx3.init()
-# engine.setProperty('rate', rate)
-
-post_id = videoprofile['info']['submission_id']
-
-wait_for_element_to_load = videoprofile['technical']['wait_for_elements_to_load']
-
-ttsvoice = videoprofile['tts']['voice']
-ttsspeed = videoprofile['tts']['speed']
-ttsvolume = videoprofile['tts']['volume']
-
-fps = videoprofile['video']['fps']
-bgaudiovolume = videoprofile['video']['bgaudiovolume']
-res = tuple(videoprofile['video']['res'])
-wait_before_start = videoprofile['video']['wait_before_start']
-wait_between_comments = videoprofile['video']['wait_between_comments']
-enable_transitions = bool(videoprofile['video']['enable_transitions'])
-read_title_body = bool(videoprofile['video']['read_title_body'])
-
-videobg = videoprofile['assets']['videobg']
-videocensor = videoprofile['assets']['videocensor']
-bgmusic = videoprofile['assets']['bgmusic']
-
-videocensorclip = VideoFileClip(videocensor)
-videobgclip = VideoFileClip(videobg)
-bgmusicclip = AudioFileClip(bgmusic)
 
 
 def balcon_tts(voicename, speed, volume, outputfile, text):
@@ -98,7 +68,7 @@ def resize_to_screenbounds(filename, filedest, resolution=(1920, 1080)):
 
 
 # screenshot a webpage element given a selector, a webdriver and a file name to save to
-def screenshot_element(csselctor, driver, file_location):
+def screenshot_element(csselctor, driver, file_location, wait_for_element_to_load):
     try:
         WebDriverWait(driver, wait_for_element_to_load).until(
             EC.presence_of_element_located((By.CSS_SELECTOR, csselctor))
@@ -115,7 +85,7 @@ def screenshot_element(csselctor, driver, file_location):
 
 # screenshot reddit thread provided data from def get_reddit_data() and a working directory
 # returns True if success, False if fail
-def screenshot_thread(data, wrkdir, headless=True):
+def screenshot_thread(data, wrkdir, videoexport, headless=True):
     # run it so it doesn't open firefox on desktop
     options = webdriver.FirefoxOptions()
     options.headless = headless
@@ -127,7 +97,7 @@ def screenshot_thread(data, wrkdir, headless=True):
     # change to darkmode
     # TODO Except TimeoutException Properly
     try:
-        WebDriverWait(fox, wait_for_element_to_load).until(
+        WebDriverWait(fox, videoexport['technical']['wait_for_elements_to_load']).until(
             EC.element_to_be_clickable((By.ID, "USER_DROPDOWN_ID"))
         )
     except TimeoutException:
@@ -136,7 +106,7 @@ def screenshot_thread(data, wrkdir, headless=True):
     fox.find_element(By.ID, "USER_DROPDOWN_ID").click()
 
     try:
-        WebDriverWait(fox, wait_for_element_to_load).until(
+        WebDriverWait(fox, videoexport['technical']['wait_for_elements_to_load']).until(
             EC.element_to_be_clickable((By.XPATH, "//*[text()[contains(.,'Night Mode')]]"))
         )
     except TimeoutException:
@@ -146,7 +116,7 @@ def screenshot_thread(data, wrkdir, headless=True):
         (By.XPATH, "//*[text()[contains(.,'Night Mode')]]").click()
 
     try:
-        WebDriverWait(fox, wait_for_element_to_load).until(
+        WebDriverWait(fox, videoexport['technical']['wait_for_elements_to_load']).until(
             EC.element_to_be_clickable((By.XPATH, "//*[text()[contains(.,'View Entire Disc')]]"))
         )
     except TimeoutException:
@@ -160,13 +130,14 @@ def screenshot_thread(data, wrkdir, headless=True):
         (
             "#" + data['general']['css-selector'],
             fox,
-            wrkdir + data['general']['id'] + '.png'
+            wrkdir + data['general']['id'] + '.png',
+            videoexport['technical']['wait_for_elements_to_load']
         )
 
     # a bit of a mess, but essentially it means: iterate over every
     # comment, but slice it so it will only take the comments it gathered data about
     for comment in data['general']['comments'][:len(data['comment_data'])]:
-        screenshot_element("#" + comment.name, fox, wrkdir + comment.id + '.png')
+        screenshot_element("#" + comment.name, fox, wrkdir + comment.id + '.png', videoexport['technical']['wait_for_elements_to_load'])
 
     fox.close()
     return True
@@ -220,7 +191,7 @@ def grab_reddit_data(submission_id, size):
     reddit_data['comment_data'] = comment_data
     return reddit_data
 
-    # TODO (Low priority) Optional: Log post data
+    # LOWPRIORITY Log post data
 
 
 '''
@@ -254,7 +225,7 @@ def mkdir_ifnotexist(dirname):
 # material for the creation of the video
 
 # returns video path
-def organize_work_directory(data):
+def organize_work_directory(data, videoexport):
     cwd = os.getcwd()
     basepath = cwd + "/videos/"
 
@@ -272,7 +243,7 @@ def organize_work_directory(data):
     mkdir_ifnotexist(videopath + "comments/")
     mkdir_ifnotexist(videopath + "body/")
 
-    success = screenshot_thread(data=data, wrkdir=videopath + "screenshots/", headless=True)
+    success = screenshot_thread(data=data, wrkdir=videopath + "screenshots/", videoexport=videoexport, headless=True)
 
     # TODO Handle screenshot errors
     if success:
@@ -291,14 +262,14 @@ def organize_work_directory(data):
     # engine.runAndWait()
     bodysaveunder = bodydest + ".mp3"
     additional_text = ""  # text that comes in addition after the reading of the title
-    if read_title_body:
+    if bool(videoexport['video']['read_title_body']):
         additional_text += " "
         additional_text += general['body']
 
     balcon_tts\
-        (voicename=ttsvoice,
-         speed=ttsspeed,
-         volume=ttsvolume,
+        (voicename=videoexport['tts']['voice'],
+         speed=videoexport['tts']['speed'],
+         volume=videoexport['tts']['volume'],
          outputfile=bodysaveunder,
          text=general['title'] + additional_text)
 
@@ -315,9 +286,9 @@ def organize_work_directory(data):
         # engine.runAndWait()
         commentsaveunder = dest + comment['id'] + ".mp3"
         balcon_tts \
-            (voicename=ttsvoice,
-             speed=ttsspeed,
-             volume=ttsvolume,
+            (voicename=videoexport['tts']['voice'],
+             speed=videoexport['tts']['speed'],
+             volume=videoexport['tts']['volume'],
              outputfile=commentsaveunder,
              text=comment['body'])
 
@@ -378,7 +349,11 @@ def make_bg_audio(bgbase, clip):
 
 # generates clips from material and renders a final video
 # TODO Add start and end clip
-def generate_clips(videopath, data):
+def generate_clips(videopath, data, videoexport, asset_clips):
+    videobgclip = asset_clips['videobgclip']
+    videocensorclip = asset_clips['videocensorclip']
+    bgmusicclip = asset_clips['bgmusicclip']
+
     general = data['general']
     comment_data = data['comment_data']
     clips = []
@@ -388,12 +363,14 @@ def generate_clips(videopath, data):
     bodyimage_path = videopath + "body/" + general['id'] + ".png"
 
     bodyimage_audio = AudioFileClip(bodymp3_path)
-    bodyimage = ImageClip(bodyimage_path).set_duration(bodyimage_audio.duration + wait_before_start)
+    bodyimage = ImageClip(bodyimage_path).set_duration(bodyimage_audio.duration +
+                                                       videoexport['video']['wait_before_start'])
     bodyimage.audio = bodyimage_audio
 
     # bodybg = videobgclip.subclip(0, limit_high(bodyimage.duration, videobgclip.duration))
     bodybg = make_bg_video(bgbase=videobgclip, clip=bodyimage)
-    bodyimagefinal = CompositeVideoClip([bodybg, bodyimage.set_position("center")], size=res)
+    bodyimagefinal = CompositeVideoClip([bodybg, bodyimage.set_position("center")],
+                                        size=tuple(videoexport['video']['res']))
 
     clips.append(bodyimagefinal)
 
@@ -402,15 +379,17 @@ def generate_clips(videopath, data):
         commentmp3_path = videopath + "comments/" + comment['id'] + "/" + comment['id'] + ".mp3"
 
         commentimage_audio = AudioFileClip(commentmp3_path)
-        commentimage = ImageClip(commentimage_path).set_duration(commentimage_audio.duration)
+        commentimage = ImageClip(commentimage_path).set_duration(commentimage_audio.duration +
+                                                                 videoexport['video']['wait_between_comments'])
         commentimage.audio = commentimage_audio
 
         # commentbg = videobgclip.subclip(0, limit_high(commentimage.duration, videobgclip.duration))
         commentbg = make_bg_video(bgbase=videobgclip, clip=commentimage)
-        commentimagefinal = CompositeVideoClip([commentbg, commentimage.set_position("center")], size=res)
+        commentimagefinal = CompositeVideoClip([commentbg, commentimage.set_position("center")],
+                                               size=tuple(videoexport['video']['res']))
 
         clips.append(commentimagefinal)
-        if enable_transitions == 1:
+        if bool(videoexport['video']['enable_transitions']) == 1:
             clips.append(videocensorclip)
 
     # remove the last beep from video
@@ -419,30 +398,44 @@ def generate_clips(videopath, data):
     mergedclip = concatenate_videoclips(clips=clips)
     audiomain = mergedclip.audio
     audiobg = make_bg_audio(bgbase=bgmusicclip, clip=mergedclip)
-    finalaudio = CompositeAudioClip([audiomain, audiobg.volumex(bgaudiovolume)])
+    finalaudio = CompositeAudioClip([audiomain, audiobg.volumex(videoexport['video']['bgaudiovolume'])])
 
     mergedclip.audio = finalaudio
-    mergedclip.write_videofile(general['id'] + ".mp4", fps=fps)
+    mergedclip.write_videofile(general['id'] + ".mp4", fps=videoexport['video']['fps'])
 
 
 # essentially works like generate_clips() but doesn't require the reddit data
 # dictionary to work (you can use an existing reddit video folder)
-def generate_clips_folder_only(videopath):
+
+# assets_clips:
+#   {
+#       "videobgclip": VideoFileClip(videobg)
+#       "videocensorclip": VideoFileClip(videocensor)
+#       "bgmusicclip": VideoFileClip(bgmusic)
+#   }
+#
+def generate_clips_folder_only(videopath, videoexport, asset_clips):
     clips = []
+
+    videobgclip = asset_clips['videobgclip']
+    videocensorclip = asset_clips['videocensorclip']
+    bgmusicclip = asset_clips['bgmusicclip']
 
     # generate clip for body
     bodymp3_path = videopath + "body/" + [each for each in os.listdir(videopath + "body/") if each.endswith('.mp3')][0]
     bodyimage_path = videopath + "body/" + [each for each in os.listdir(videopath + "body/") if each.endswith('.png')][0]
 
     bodyimage_audio = AudioFileClip(bodymp3_path)
-    bodyimage = ImageClip(bodyimage_path).set_duration(bodyimage_audio.duration + wait_before_start)
+    bodyimage = ImageClip(bodyimage_path).set_duration(bodyimage_audio.duration +
+                                                       videoexport['video']['wait_before_start'])
     bodyimage.audio = bodyimage_audio
 
     bodyid = Path(bodyimage_path).stem
 
     # bodybg = videobgclip.subclip(0, limit_high(bodyimage.duration, videobgclip.duration))
     bodybg = make_bg_video(bgbase=videobgclip, clip=bodyimage)
-    bodyimagefinal = CompositeVideoClip([bodybg, bodyimage.set_position("center")], size=res)
+    bodyimagefinal = CompositeVideoClip([bodybg, bodyimage.set_position("center")],
+                                        size=tuple(videoexport['video']['res']))
 
     clips.append(bodyimagefinal)
 
@@ -453,15 +446,16 @@ def generate_clips_folder_only(videopath):
 
             commentimage_audio = AudioFileClip(commentmp3_path)
             commentimage = ImageClip(commentimage_path).\
-                set_duration(commentimage_audio.duration + wait_between_comments)
+                set_duration(commentimage_audio.duration + videoexport['video']['wait_between_comments'])
             commentimage.audio = commentimage_audio
 
             # commentbg = videobgclip.subclip(0, limit_high(commentimage.duration, videobgclip.duration))
             commentbg = make_bg_video(bgbase=videobgclip, clip=commentimage)
-            commentimagefinal = CompositeVideoClip([commentbg, commentimage.set_position("center")], size=res)
+            commentimagefinal = CompositeVideoClip([commentbg, commentimage.set_position("center")],
+                                                   size=tuple(videoexport['video']['res']))
 
             clips.append(commentimagefinal)
-            if enable_transitions:
+            if bool(videoexport['video']['enable_transitions']):
                 clips.append(videocensorclip)
 
     # remove the last beep from video
@@ -470,13 +464,23 @@ def generate_clips_folder_only(videopath):
     mergedclip = concatenate_videoclips(clips=clips)
     audiomain = mergedclip.audio
     audiobg = make_bg_audio(bgbase=bgmusicclip, clip=mergedclip)
-    finalaudio = CompositeAudioClip([audiomain, audiobg.volumex(bgaudiovolume)])
+    finalaudio = CompositeAudioClip([audiomain, audiobg.volumex(videoexport['video']['bgaudiovolume'])])
 
     mergedclip.audio = finalaudio
-    mergedclip.write_videofile(bodyid + ".mp4", fps=fps)
+    mergedclip.write_videofile(bodyid + ".mp4", fps=videoexport['video']['fps'])
 
 
-if __name__ == '__main__':
-    r_data = grab_reddit_data(submission_id=post_id, size=1)
-    video_path = organize_work_directory(data=r_data)
-    generate_clips_folder_only(videopath=video_path)
+def video_from_json(videoexport):
+    assets = {
+        "videobgclip": VideoFileClip(videoexport['assets']['videobg']),
+        "videocensorclip": VideoFileClip(videoexport['assets']['videocensor']),
+        "bgmusicclip": AudioFileClip(videoexport['assets']['bgmusic'])
+    }
+    r_data = grab_reddit_data(submission_id=videoexport['info']['submission_id'], size=5)
+    video_path = organize_work_directory(data=r_data, videoexport=videoexport)
+    generate_clips_folder_only(videopath=video_path, videoexport=videoexport, asset_clips=assets)
+    pass
+
+
+if __name__ == "__main__":
+    video_from_json(json.load(open('videoexport.json')))

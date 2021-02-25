@@ -23,5 +23,32 @@
   },
   "technical": {
     "wait_for_elements_to_load": 60
+  },
+  "thumbnail_data": {
+    "assets": {
+      "template_image": "Flavor/TEMPLATE.png",
+      "overlay_image": null,
+      "default_overlay": "Flavor/ICON960X900.png",
+      "font_path": "Flavor/FONT.otf"
+    },
+    "font": {
+      "pt_size": 102,
+      "color": [255, 255, 255],
+      "keyword_color": [
+        [0, 255, 0],
+        [0, 0, 255],
+        [255, 255, 0],
+        [0, 255, 255],
+        [255, 0, 255]
+      ],
+      "keyword_count": 2,
+      "position": [85, 230],
+      "text_width": 700,
+      "vertical_spacing": 120,
+      "number_of_lines": 4
+    },
+    "construction": {
+      "image_position": [900, 75]
+    }
   }
 }
