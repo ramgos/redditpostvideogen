@@ -14,7 +14,8 @@
     "wait_before_start": 0.5,
     "wait_between_comments": 0,
     "enable_transitions": 1,
-    "read_title_body": 1
+    "read_title_body": 1,
+    "save_under": "hidden/"
   },
   "assets": {
     "videobg": "Flavor/BG.mp4",
@@ -27,7 +28,7 @@
   "thumbnail_data": {
     "assets": {
       "template_image": "Flavor/TEMPLATE.png",
-      "overlay_image": null,
+      "overlay_image": "Flavor/ahegofaceblush.png",
       "default_overlay": "Flavor/ICON960X900.png",
       "font_path": "Flavor/FONT.otf"
     },
@@ -45,10 +46,11 @@
       "position": [85, 230],
       "text_width": 700,
       "vertical_spacing": 120,
-      "number_of_lines": 4
+      "number_of_lines": 5
     },
     "construction": {
-      "image_position": [900, 75]
+      "image_position": [900, 75],
+      "image_size": [960, 900]
     }
   }
 }

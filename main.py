@@ -13,6 +13,7 @@ from selenium.common.exceptions import TimeoutException
 from PIL import Image
 from pathlib import Path
 import math
+import auto_thumbnail
 '''
 NOTE: Known issue: if you have a whitespace in your path it would cause errors
 when trying to synthesize audio clips
@@ -33,9 +34,10 @@ credentials = json.load(open('config.json'))
 
 
 def balcon_tts(voicename, speed, volume, outputfile, text):
-    wrkdir = pathlib.Path(outputfile).absolute().parent
+    print(outputfile)
+    wrkdir = os.path.dirname(outputfile)
 
-    with open(str(wrkdir) + "/" + "textholder.txt", "w", encoding="utf-8") as textholder:
+    with open(str(wrkdir) + "/textholder.txt", "w", encoding="utf-8") as textholder:
         textholder.write(text)
 
     finalvoicename = '"' + voicename + '"'
@@ -46,25 +48,16 @@ def balcon_tts(voicename, speed, volume, outputfile, text):
              speed=speed,
              volume=volume,
              outputfile=outputfile,
-             inputfile=str(wrkdir) + "/" + "textholder.txt")
+             inputfile=str(wrkdir) + "/textholder.txt")
 
     subprocess.run(command)
-    os.remove(str(wrkdir) + "/" + "textholder.txt")
+    os.remove(str(wrkdir) + "/textholder.txt")
 
 
 def resize_to_screenbounds(filename, filedest, resolution=(1920, 1080)):
     im = Image.open(filename)
-    size = im.size
-    if size[0] / size[1] >= 1:  # if the image is horizontal
-        ratio = size[1]/size[0]
-        y = math.floor(ratio * resolution[0])
-        resized_image = im.resize((resolution[0], y))
-        resized_image.save(filedest, format='png')
-    else:
-        ratio = size[0]/size[1]
-        x = math.floor(ratio * resolution[1])
-        resized_image = im.resize((x, resolution[1]))
-        resized_image.save(filedest, format='png')
+    resized_image = auto_thumbnail.smart_resize(image=im, new_res=resolution)
+    resized_image.save(filedest, format='png')
 
 
 # screenshot a webpage element given a selector, a webdriver and a file name to save to
@@ -137,7 +130,8 @@ def screenshot_thread(data, wrkdir, videoexport, headless=True):
     # a bit of a mess, but essentially it means: iterate over every
     # comment, but slice it so it will only take the comments it gathered data about
     for comment in data['general']['comments'][:len(data['comment_data'])]:
-        screenshot_element("#" + comment.name, fox, wrkdir + comment.id + '.png', videoexport['technical']['wait_for_elements_to_load'])
+        screenshot_element("#" + comment.name, fox, wrkdir + comment.id + '.png', videoexport['technical']
+        ['wait_for_elements_to_load'])
 
     fox.close()
     return True
@@ -227,7 +221,8 @@ def mkdir_ifnotexist(dirname):
 # returns video path
 def organize_work_directory(data, videoexport):
     cwd = os.getcwd()
-    basepath = cwd + "/videos/"
+    # basepath = cwd + "/videos/"
+    basepath = "videos/"
 
     general = data['general']
     comment_data = data['comment_data']
@@ -347,63 +342,6 @@ def make_bg_audio(bgbase, clip):
     return finalclip
 
 
-# generates clips from material and renders a final video
-# TODO Add start and end clip
-def generate_clips(videopath, data, videoexport, asset_clips):
-    videobgclip = asset_clips['videobgclip']
-    videocensorclip = asset_clips['videocensorclip']
-    bgmusicclip = asset_clips['bgmusicclip']
-
-    general = data['general']
-    comment_data = data['comment_data']
-    clips = []
-
-    # generate clip for body
-    bodymp3_path = videopath + "body/" + general['id'] + ".mp3"
-    bodyimage_path = videopath + "body/" + general['id'] + ".png"
-
-    bodyimage_audio = AudioFileClip(bodymp3_path)
-    bodyimage = ImageClip(bodyimage_path).set_duration(bodyimage_audio.duration +
-                                                       videoexport['video']['wait_before_start'])
-    bodyimage.audio = bodyimage_audio
-
-    # bodybg = videobgclip.subclip(0, limit_high(bodyimage.duration, videobgclip.duration))
-    bodybg = make_bg_video(bgbase=videobgclip, clip=bodyimage)
-    bodyimagefinal = CompositeVideoClip([bodybg, bodyimage.set_position("center")],
-                                        size=tuple(videoexport['video']['res']))
-
-    clips.append(bodyimagefinal)
-
-    for comment in comment_data:
-        commentimage_path = videopath + "comments/" + comment['id'] + "/" + comment['id'] + ".png"
-        commentmp3_path = videopath + "comments/" + comment['id'] + "/" + comment['id'] + ".mp3"
-
-        commentimage_audio = AudioFileClip(commentmp3_path)
-        commentimage = ImageClip(commentimage_path).set_duration(commentimage_audio.duration +
-                                                                 videoexport['video']['wait_between_comments'])
-        commentimage.audio = commentimage_audio
-
-        # commentbg = videobgclip.subclip(0, limit_high(commentimage.duration, videobgclip.duration))
-        commentbg = make_bg_video(bgbase=videobgclip, clip=commentimage)
-        commentimagefinal = CompositeVideoClip([commentbg, commentimage.set_position("center")],
-                                               size=tuple(videoexport['video']['res']))
-
-        clips.append(commentimagefinal)
-        if bool(videoexport['video']['enable_transitions']) == 1:
-            clips.append(videocensorclip)
-
-    # remove the last beep from video
-    # clips.pop(-1)
-
-    mergedclip = concatenate_videoclips(clips=clips)
-    audiomain = mergedclip.audio
-    audiobg = make_bg_audio(bgbase=bgmusicclip, clip=mergedclip)
-    finalaudio = CompositeAudioClip([audiomain, audiobg.volumex(videoexport['video']['bgaudiovolume'])])
-
-    mergedclip.audio = finalaudio
-    mergedclip.write_videofile(general['id'] + ".mp4", fps=videoexport['video']['fps'])
-
-
 # essentially works like generate_clips() but doesn't require the reddit data
 # dictionary to work (you can use an existing reddit video folder)
 
@@ -467,9 +405,10 @@ def generate_clips_folder_only(videopath, videoexport, asset_clips):
     finalaudio = CompositeAudioClip([audiomain, audiobg.volumex(videoexport['video']['bgaudiovolume'])])
 
     mergedclip.audio = finalaudio
-    mergedclip.write_videofile(bodyid + ".mp4", fps=videoexport['video']['fps'])
+    mergedclip.write_videofile(videoexport['video']['save_under'] + bodyid + ".mp4", fps=videoexport['video']['fps'])
 
 
+# main function - generates video from videoexport
 def video_from_json(videoexport):
     assets = {
         "videobgclip": VideoFileClip(videoexport['assets']['videobg']),
@@ -477,9 +416,12 @@ def video_from_json(videoexport):
         "bgmusicclip": AudioFileClip(videoexport['assets']['bgmusic'])
     }
     r_data = grab_reddit_data(submission_id=videoexport['info']['submission_id'], size=5)
-    video_path = organize_work_directory(data=r_data, videoexport=videoexport)
-    generate_clips_folder_only(videopath=video_path, videoexport=videoexport, asset_clips=assets)
-    pass
+    # video_path = organize_work_directory(data=r_data, videoexport=videoexport)
+    # generate_clips_folder_only(videopath=video_path, videoexport=videoexport, asset_clips=assets)
+
+    text_data = auto_thumbnail.get_thumbnail_text(text=r_data['general']['title'], data=videoexport)
+    thumbnail = auto_thumbnail.draw_colored_text(text_data=text_data, data=videoexport)
+    thumbnail.save(videoexport['video']['save_under'] + videoexport['info']['submission_id'] + ".png")
 
 
 if __name__ == "__main__":

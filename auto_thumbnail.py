@@ -1,12 +1,46 @@
 from PIL import Image
 from PIL import ImageDraw
+from PIL import ImageFont
 from rake_nltk import Rake
 import re
 import random
+import math
+
+# data refers to videoexport.json
+
+
+def smart_resize(image, new_res):
+    old_res = image.size
+    if old_res[0] / old_res[1] >= 1:  # if the image is horizontal
+        ratio = old_res[1] / old_res[0]
+        y = math.floor(ratio * new_res[0])
+        resized_image = image.resize((new_res[0], y))
+        return resized_image
+    else:
+        ratio = old_res[0] / old_res[1]
+        x = math.floor(ratio * new_res[1])
+        resized_image = image.resize((x, new_res[1]))
+        return resized_image
+
+
+# crops image from center, or if new res is bigger than image it proportionally resizes
+def crop_image(image, new_res):
+    old_res = image.size
+    if new_res[0] > old_res[0] or new_res[1] > old_res[1]:
+        resized_image = smart_resize(image=image, new_res=new_res)
+        return resized_image
+    else:
+        top = math.floor((old_res[1]-new_res[1]) / 2)
+        bottom = top + new_res[1]
+        left = math.floor((old_res[0]-new_res[0]) / 2)
+        right = left + new_res[0]
+
+        cropped_image = image.crop((left, top, right, bottom))
+        return cropped_image
 
 
 # get the foundation of the thumbnail provided data (see main.py for what does "data" mean)
-def get_basic_thumbnail(data):
+def get_basic_thumbnail(data, crop=True):
     base = Image.open(data['thumbnail_data']['assets']['template_image'])
 
     overlayimage = ""
@@ -15,6 +49,9 @@ def get_basic_thumbnail(data):
     else:
         overlayimage = Image.open(data['thumbnail_data']['assets']['default_overlay'])
 
+    if crop and overlayimage.size != data['thumbnail_data']['construction']['image_size']:
+        overlayimage = crop_image(image=overlayimage, new_res=data['thumbnail_data']['construction']['image_size'])
+
     base.paste(overlayimage, data['thumbnail_data']['construction']['image_position'], overlayimage)
     return base
 
@@ -22,7 +59,13 @@ def get_basic_thumbnail(data):
 # returns a list of word-boolean pairs, along with some line-breaks.
 # the boolean part indicates if the word should be marked with some color
 # in the thumbnail or not
-def get_thumbnail_text(text, font, data):
+# by default the font is retrived from data, but you can specify otherwise
+def get_thumbnail_text(text, data, font=None):
+    thumbnail_font = font
+    if not font:
+        thumbnail_font = ImageFont.truetype(data['thumbnail_data']['assets']['font_path'],
+                                            size=data['thumbnail_data']['font']['pt_size'])
+
     # im writing this for my future self incase i put off this project
     # and decide to come back to it for some reason:
 
@@ -78,7 +121,7 @@ def get_thumbnail_text(text, font, data):
         new_word_list.append((word, marked))
 
         currentline += word
-        size = font.getsize(currentline)
+        size = thumbnail_font.getsize(currentline)
 
         if size[0] >= data['thumbnail_data']['font']['text_width']:
             new_word_list.append("\n")
@@ -96,11 +139,20 @@ def get_thumbnail_text(text, font, data):
 
 # given an ImageDraw object and text_data which is
 # retrived from def get_thumbnail_text() it writes the thumbnail text
-# on the thumbnail
-def draw_colored_text(image, text_data, data, font):
-    draw = ImageDraw.Draw(image)
+# on the thumbnail.
+# by default, the image and font is retrived from data, but you can specify otherwise.
+def draw_colored_text(text_data, data, font=None, image=None):
+    base = image
+    thumbnail_font = font
+    if not image:
+        base = get_basic_thumbnail(data=data)
+    if not font:
+        thumbnail_font = ImageFont.truetype(data['thumbnail_data']['assets']['font_path'],
+                                            size=data['thumbnail_data']['font']['pt_size'])
 
-    space_size = font.getsize(" ")
+    draw = ImageDraw.Draw(base)
+
+    space_size = thumbnail_font.getsize(" ")
     pos = data['thumbnail_data']['font']['position']
     start_x = pos[0]
     last_color = [255, 255, 255]
@@ -112,11 +164,11 @@ def draw_colored_text(image, text_data, data, font):
         if word == "\n":
             pos = start_x, pos[1] + data['thumbnail_data']['font']['vertical_spacing']
         elif word == "...":
-            draw.text(pos, "...", font=font, fill=tuple(last_color))
+            draw.text(pos, "...", font=thumbnail_font, fill=tuple(last_color))
         else:
             word_content = word[0]
             word_is_colored = word[1]
-            word_size = font.getsize(word_content)
+            word_size = thumbnail_font.getsize(word_content)
             word_color = ""
 
             if word_is_colored:
@@ -130,7 +182,8 @@ def draw_colored_text(image, text_data, data, font):
                 was_recent_word_colored = False
                 word_color = data['thumbnail_data']['font']['color']
 
-            draw.text(pos, word_content, font=font, fill=tuple(word_color))
+            draw.text(pos, word_content, font=thumbnail_font, fill=tuple(word_color))
             pos = pos[0] + word_size[0] + space_size[0], pos[1]
 
             last_color = word_color
+    return base
