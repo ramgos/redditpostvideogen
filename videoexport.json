@@ -15,7 +15,8 @@
     "wait_between_comments": 0,
     "enable_transitions": 1,
     "read_title_body": 1,
-    "save_under": "hidden/"
+    "save_under": "hidden/",
+    "comment_size": 1
   },
   "assets": {
     "videobg": "Flavor/BG.mp4",
@@ -23,12 +24,13 @@
     "bgmusic": "Flavor/BGMUSIC.mp3"
   },
   "technical": {
-    "wait_for_elements_to_load": 60
+    "wait_for_elements_to_load": 60,
+    "wait_between_actions": 5
   },
   "thumbnail_data": {
     "assets": {
       "template_image": "Flavor/TEMPLATE.png",
-      "overlay_image": "Flavor/ahegofaceblush.png",
+      "overlay_image": "",
       "default_overlay": "Flavor/ICON960X900.png",
       "font_path": "Flavor/FONT.otf"
     },

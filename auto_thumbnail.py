@@ -39,7 +39,7 @@ def crop_image(image, new_res):
         return cropped_image
 
 
-# get the foundation of the thumbnail provided data (see main.py for what does "data" mean)
+# get the foundation of the thumbnail provided data (see videogen.py for what does "data" mean)
 def get_basic_thumbnail(data, crop=True):
     base = Image.open(data['thumbnail_data']['assets']['template_image'])
 

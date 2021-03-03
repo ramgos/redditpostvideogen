@@ -1,7 +1,4 @@
 import subprocess
-import pathlib
-import praw
-import json
 import os.path
 from moviepy.editor import *
 from time import sleep
@@ -14,13 +11,14 @@ from PIL import Image
 from pathlib import Path
 import math
 import auto_thumbnail
+
 '''
 NOTE: Known issue: if you have a whitespace in your path it would cause errors
 when trying to synthesize audio clips
 '''
 
+
 # TODO Add option to gather comments by video length rather than comment amount
-# TODO Handle Balcon TTS issues (like the whitespace in path)
 # TODO Code multiple posts export
 #   - Each video needs a seperate videoexport.json of itself,
 #   an image which will be placed on top of the thumbnail, a defualt image
@@ -30,11 +28,9 @@ when trying to synthesize audio clips
 #   More ideas for cusstomization: Skip over comments that are longer that N characters
 
 # load private information
-credentials = json.load(open('config.json'))
 
 
 def balcon_tts(voicename, speed, volume, outputfile, text):
-    print(outputfile)
     wrkdir = os.path.dirname(outputfile)
 
     with open(str(wrkdir) + "/textholder.txt", "w", encoding="utf-8") as textholder:
@@ -42,13 +38,12 @@ def balcon_tts(voicename, speed, volume, outputfile, text):
 
     finalvoicename = '"' + voicename + '"'
     template = "balcon -n {voicename} -s {speed} -v {volume} -w {outputfile} -f {inputfile}"
-    command = \
-        template.format\
-            (voicename=finalvoicename,
-             speed=speed,
-             volume=volume,
-             outputfile=outputfile,
-             inputfile=str(wrkdir) + "/textholder.txt")
+    command = template.format \
+        (voicename=finalvoicename,
+         speed=speed,
+         volume=volume,
+         outputfile=outputfile,
+         inputfile=str(wrkdir) + "/textholder.txt")
 
     subprocess.run(command)
     os.remove(str(wrkdir) + "/textholder.txt")
@@ -69,7 +64,7 @@ def screenshot_element(csselctor, driver, file_location, wait_for_element_to_loa
     except TimeoutException:
         print("Something went wrong while waiting for an element to load...")
         return
-    image = driver.find_element\
+    image = driver.find_element \
         (By.CSS_SELECTOR, csselctor)
     driver.execute_script("arguments[0].scrollIntoView();", image)
     sleep(3)
@@ -88,7 +83,7 @@ def screenshot_thread(data, wrkdir, videoexport, headless=True):
     fox.get(data['general']['url'])
 
     # change to darkmode
-    # TODO Except TimeoutException Properly
+    sleep(videoexport['technical']['wait_between_actions'])
     try:
         WebDriverWait(fox, videoexport['technical']['wait_for_elements_to_load']).until(
             EC.element_to_be_clickable((By.ID, "USER_DROPDOWN_ID"))
@@ -98,6 +93,7 @@ def screenshot_thread(data, wrkdir, videoexport, headless=True):
         return False
     fox.find_element(By.ID, "USER_DROPDOWN_ID").click()
 
+    sleep(videoexport['technical']['wait_between_actions'])
     try:
         WebDriverWait(fox, videoexport['technical']['wait_for_elements_to_load']).until(
             EC.element_to_be_clickable((By.XPATH, "//*[text()[contains(.,'Night Mode')]]"))
@@ -105,9 +101,10 @@ def screenshot_thread(data, wrkdir, videoexport, headless=True):
     except TimeoutException:
         print("Something went wrong while waiting for an element to load...")
         return False
-    fox.find_element\
+    fox.find_element \
         (By.XPATH, "//*[text()[contains(.,'Night Mode')]]").click()
 
+    sleep(videoexport['technical']['wait_between_actions'])
     try:
         WebDriverWait(fox, videoexport['technical']['wait_for_elements_to_load']).until(
             EC.element_to_be_clickable((By.XPATH, "//*[text()[contains(.,'View Entire Disc')]]"))
@@ -115,11 +112,11 @@ def screenshot_thread(data, wrkdir, videoexport, headless=True):
     except TimeoutException:
         print("Something went wrong while waiting for an element to load...")
         return False
-    fox.find_element\
+    fox.find_element \
         (By.XPATH, "//*[text()[contains(.,'View Entire Disc')]]").click()
 
     # screenshot body
-    screenshot_element\
+    screenshot_element \
         (
             "#" + data['general']['css-selector'],
             fox,
@@ -130,8 +127,8 @@ def screenshot_thread(data, wrkdir, videoexport, headless=True):
     # a bit of a mess, but essentially it means: iterate over every
     # comment, but slice it so it will only take the comments it gathered data about
     for comment in data['general']['comments'][:len(data['comment_data'])]:
-        screenshot_element("#" + comment.name, fox, wrkdir + comment.id + '.png', videoexport['technical']
-        ['wait_for_elements_to_load'])
+        screenshot_element("#" + comment.name, fox, wrkdir + comment.id + '.png',
+                           videoexport['technical']['wait_for_elements_to_load'])
 
     fox.close()
     return True
@@ -140,46 +137,38 @@ def screenshot_thread(data, wrkdir, videoexport, headless=True):
 # return all relevant regarding a reddit thread as a dictionary containing the body and comments
 # size determines the amount of comments the script is going to return
 
-def grab_reddit_data(submission_id, size):
-    reddit = praw.Reddit(
-        client_id=credentials['client_id'],
-        client_secret=credentials['client_secret'],
-        user_agent=credentials['user_agent'],
-        username=credentials['username'],
-        password=credentials['password']
-    )
-
+def grab_reddit_data(submission_id, size, reddit):
     target_submission = reddit.submission(id=submission_id)
     # target_submission.comment_sort = "top"
 
     # general data regarding the post
     main_post_dict = \
-    {
-        "id": submission_id,
-        "title": target_submission.title,
-        "body": target_submission.selftext,
-        "upvotes": target_submission.score,
-        "subreddit": target_submission.subreddit_name_prefixed,
-        "comments": target_submission.comments,
-        "author": target_submission.author,
-        "url": target_submission.url,
-        "css-selector": target_submission.name
-    }
+        {
+            "id": submission_id,
+            "title": target_submission.title,
+            "body": target_submission.selftext,
+            "upvotes": target_submission.score,
+            "subreddit": target_submission.subreddit_name_prefixed,
+            "comments": target_submission.comments,
+            "author": target_submission.author,
+            "url": target_submission.url,
+            "css-selector": target_submission.name
+        }
 
     # data is what will be returned by the function
     reddit_data = \
-    {
-        "general": main_post_dict
-    }
+        {
+            "general": main_post_dict
+        }
     comment_data = []
 
     for comment in target_submission.comments[:size]:
         cmnt = \
-        {
-            "id": comment.id,
-            "author": comment.author,
-            "body": comment.body
-        }
+            {
+                "id": comment.id,
+                "author": comment.author,
+                "body": comment.body
+            }
         comment_data.append(cmnt)
 
     reddit_data['comment_data'] = comment_data
@@ -213,6 +202,8 @@ grab_reddit_data format:
 def mkdir_ifnotexist(dirname):
     if not os.path.isdir(dirname):
         os.mkdir(dirname)
+        return False
+    return True
 
 
 # this creats and organizes a directory containing all important
@@ -261,7 +252,7 @@ def organize_work_directory(data, videoexport):
         additional_text += " "
         additional_text += general['body']
 
-    balcon_tts\
+    balcon_tts \
         (voicename=videoexport['tts']['voice'],
          speed=videoexport['tts']['speed'],
          volume=videoexport['tts']['volume'],
@@ -300,7 +291,7 @@ def limit_high(a, b):
 
 
 def reverse_clip(clip):
-    new_clip = clip.fl_time(lambda t: clip.duration-1-t)
+    new_clip = clip.fl_time(lambda t: clip.duration - 1 - t)
     new_clip.duration = clip.duration
     return new_clip
 
@@ -361,7 +352,8 @@ def generate_clips_folder_only(videopath, videoexport, asset_clips):
 
     # generate clip for body
     bodymp3_path = videopath + "body/" + [each for each in os.listdir(videopath + "body/") if each.endswith('.mp3')][0]
-    bodyimage_path = videopath + "body/" + [each for each in os.listdir(videopath + "body/") if each.endswith('.png')][0]
+    bodyimage_path = videopath + "body/" + [each for each in os.listdir(videopath + "body/") if each.endswith('.png')][
+        0]
 
     bodyimage_audio = AudioFileClip(bodymp3_path)
     bodyimage = ImageClip(bodyimage_path).set_duration(bodyimage_audio.duration +
@@ -383,7 +375,7 @@ def generate_clips_folder_only(videopath, videoexport, asset_clips):
             commentimage_path = item.path + "/" + [each for each in os.listdir(item.path) if each.endswith('.png')][0]
 
             commentimage_audio = AudioFileClip(commentmp3_path)
-            commentimage = ImageClip(commentimage_path).\
+            commentimage = ImageClip(commentimage_path). \
                 set_duration(commentimage_audio.duration + videoexport['video']['wait_between_comments'])
             commentimage.audio = commentimage_audio
 
@@ -409,20 +401,33 @@ def generate_clips_folder_only(videopath, videoexport, asset_clips):
 
 
 # main function - generates video from videoexport
-def video_from_json(videoexport):
+def video_from_json(videoexport, reddit):
     assets = {
         "videobgclip": VideoFileClip(videoexport['assets']['videobg']),
         "videocensorclip": VideoFileClip(videoexport['assets']['videocensor']),
         "bgmusicclip": AudioFileClip(videoexport['assets']['bgmusic'])
     }
-    r_data = grab_reddit_data(submission_id=videoexport['info']['submission_id'], size=5)
-    # video_path = organize_work_directory(data=r_data, videoexport=videoexport)
-    # generate_clips_folder_only(videopath=video_path, videoexport=videoexport, asset_clips=assets)
+    r_data = grab_reddit_data(submission_id=videoexport['info']['submission_id'],
+                              size=videoexport['video']['comment_size'], reddit=reddit)
+    video_path = organize_work_directory(data=r_data, videoexport=videoexport)
+    generate_clips_folder_only(videopath=video_path, videoexport=videoexport, asset_clips=assets)
 
     text_data = auto_thumbnail.get_thumbnail_text(text=r_data['general']['title'], data=videoexport)
     thumbnail = auto_thumbnail.draw_colored_text(text_data=text_data, data=videoexport)
     thumbnail.save(videoexport['video']['save_under'] + videoexport['info']['submission_id'] + ".png")
 
 
-if __name__ == "__main__":
-    video_from_json(json.load(open('videoexport.json')))
+'''
+NOT WORKING, NEEDS DEBUG
+
+def multiple_json_export(videoexport, reddit):
+    exportlist = []
+    if type(videoexport) != list and type(videoexport) != tuple:
+        exportlist = [videoexport]
+    else:
+        exportlist = videoexport
+
+    for export in exportlist:
+        video_from_json(export, reddit)
+'''
+

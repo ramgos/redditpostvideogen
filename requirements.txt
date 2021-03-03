@@ -12,8 +12,8 @@ moviepy==1.0.3
 nltk==3.5
 numpy==1.20.1
 Pillow==8.1.0
-praw==7.1.0
-prawcore==1.5.0
+praw==7.2.0
+prawcore==2.0.0
 proglog==0.1.9
 pypiwin32==223
 pyttsx3==2.90
