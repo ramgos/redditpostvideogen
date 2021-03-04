@@ -11,6 +11,8 @@ from PIL import Image
 from pathlib import Path
 import math
 import auto_thumbnail
+import shutil
+from mutagen.wave import WAVE
 
 '''
 NOTE: Known issue: if you have a whitespace in your path it would cause errors
@@ -137,7 +139,7 @@ def screenshot_thread(data, wrkdir, videoexport, headless=True):
 # return all relevant regarding a reddit thread as a dictionary containing the body and comments
 # size determines the amount of comments the script is going to return
 
-def grab_reddit_data(submission_id, size, reddit):
+def grab_reddit_data(submission_id, reddit, videoexport):
     target_submission = reddit.submission(id=submission_id)
     # target_submission.comment_sort = "top"
 
@@ -155,21 +157,46 @@ def grab_reddit_data(submission_id, size, reddit):
             "css-selector": target_submission.name
         }
 
-    # data is what will be returned by the function
-    reddit_data = \
-        {
-            "general": main_post_dict
-        }
+    reddit_data = {"general": main_post_dict}
     comment_data = []
+    if bool(videoexport['video']['comment_size_is_seconds']):
+        counter = 0
+        for comment in target_submission.comments:
+            cmnt = {
+                    "id": comment.id,
+                    "author": comment.author,
+                    "body": comment.body
+                }
+            comment_data.append(cmnt)
+            tmplocation = "tmp/" + comment.id + ".mp3"
 
-    for comment in target_submission.comments[:size]:
-        cmnt = \
-            {
-                "id": comment.id,
-                "author": comment.author,
-                "body": comment.body
-            }
-        comment_data.append(cmnt)
+            balcon_tts\
+                (voicename=videoexport['tts']['voice'],
+                 speed=videoexport['tts']['speed'],
+                 volume=videoexport['tts']['volume'],
+                 outputfile=tmplocation,
+                 text=cmnt['body'])
+
+            audio = WAVE(tmplocation)
+            audio_info = audio.info
+            length = int(audio_info.length)
+
+            counter += length
+
+            if counter >= videoexport['video']['comment_size']:
+                break
+        shutil.rmtree("tmp")
+        os.mkdir("tmp")
+    else:
+        # data is what will be returned by the function
+
+        for comment in target_submission.comments[:videoexport['video']['comment_size']]:
+            cmnt = {
+                    "id": comment.id,
+                    "author": comment.author,
+                    "body": comment.body
+                }
+            comment_data.append(cmnt)
 
     reddit_data['comment_data'] = comment_data
     return reddit_data
@@ -407,27 +434,11 @@ def video_from_json(videoexport, reddit):
         "videocensorclip": VideoFileClip(videoexport['assets']['videocensor']),
         "bgmusicclip": AudioFileClip(videoexport['assets']['bgmusic'])
     }
-    r_data = grab_reddit_data(submission_id=videoexport['info']['submission_id'],
-                              size=videoexport['video']['comment_size'], reddit=reddit)
+    r_data = grab_reddit_data(submission_id=videoexport['info']['submission_id'], reddit=reddit,
+                              videoexport=videoexport)
     video_path = organize_work_directory(data=r_data, videoexport=videoexport)
     generate_clips_folder_only(videopath=video_path, videoexport=videoexport, asset_clips=assets)
 
     text_data = auto_thumbnail.get_thumbnail_text(text=r_data['general']['title'], data=videoexport)
     thumbnail = auto_thumbnail.draw_colored_text(text_data=text_data, data=videoexport)
     thumbnail.save(videoexport['video']['save_under'] + videoexport['info']['submission_id'] + ".png")
-
-
-'''
-NOT WORKING, NEEDS DEBUG
-
-def multiple_json_export(videoexport, reddit):
-    exportlist = []
-    if type(videoexport) != list and type(videoexport) != tuple:
-        exportlist = [videoexport]
-    else:
-        exportlist = videoexport
-
-    for export in exportlist:
-        video_from_json(export, reddit)
-'''
-

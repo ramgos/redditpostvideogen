@@ -89,24 +89,28 @@ def get_thumbnail_text(text, data, font=None):
     for phrase in phrases:
         pattern = re.compile(r"\b{phrase}\b".format(phrase=phrase), flags=re.I)
         match = re.search(pattern, text)
-        marked_phrases.append((phrase, (match.start(), match.end())))
+        if match:
+            marked_phrases.append((phrase, (match.start(), match.end())))
+    if len(marked_phrases) == 0:
+        for word in words:
+            marked_phrases.append((word, False))
+    else:
+        # a bit painful to read, but essentially it iterates over
+        # every word in the original text, calculates its location
+        # in the text, if the word starts at or after the beginning of a keyword
+        # and also ends at or before the ending of a keyword it is part of that keyword, and it marks it
+        # as "should be colored".
+        letter_count = 0
+        for word in words:
+            for index, phrase in enumerate(marked_phrases):
+                if letter_count >= phrase[1][0] and letter_count + len(word) <= phrase[1][1]:
+                    marked_words.append((word, True))
+                    break
+                if index == len(marked_phrases) - 1:
+                    marked_words.append((word, False))
 
-    # a bit painful to read, but essentially it iterates over
-    # every word in the original text, calculates its location
-    # in the text, if the word starts at or after the beginning of a keyword
-    # and also ends at or before the ending of a keyword it is part of that keyword, and it marks it
-    # as "should be colored".
-    letter_count = 0
-    for word in words:
-        for index, phrase in enumerate(marked_phrases):
-            if letter_count >= phrase[1][0] and letter_count + len(word) <= phrase[1][1]:
-                marked_words.append((word, True))
-                break
-            if index == len(marked_phrases) - 1:
-                marked_words.append((word, False))
-
-        letter_count += len(word)
-        letter_count += 1
+            letter_count += len(word)
+            letter_count += 1
 
     new_word_list = []
 

@@ -18,7 +18,7 @@ reddit = praw.Reddit(
 
 base = json.load(open("videoexport.json"))
 
-posts = ['lwjlif', 'lw2g2z', 'luf0ki', 'lvbv6v', 'lsyhdg']
+posts = ['lx492p']
 submissions = []
 for post_id in posts:
     videoexport = deepcopy(base)
