@@ -3,6 +3,8 @@ import json
 import videogen
 from time import sleep
 from copy import deepcopy
+import random
+import os
 
 # load credentials
 credentials = json.load(open("config.json"))
@@ -20,14 +22,18 @@ base = json.load(open("videoexport.json"))
 
 posts = ['lx492p']
 submissions = []
+
 for post_id in posts:
     videoexport = deepcopy(base)
     videoexport['info']['submission_id'] = post_id
+    videoexport['thumbnail_data']['assets']['overlay_image'] = \
+        "hidden/sauce/" + random.choice(os.listdir("hidden/sauce/"))
     submissions.append(videoexport)
 
 for export in submissions:
     videogen.video_from_json(export, reddit)
     sleep(5)
+
 
 '''
 # EXAMPLE SCRIPT USING VIDEOGEN.py

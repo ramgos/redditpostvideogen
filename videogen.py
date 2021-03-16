@@ -19,13 +19,6 @@ NOTE: Known issue: if you have a whitespace in your path it would cause errors
 when trying to synthesize audio clips
 '''
 
-
-# TODO Add option to gather comments by video length rather than comment amount
-# TODO Code multiple posts export
-#   - Each video needs a seperate videoexport.json of itself,
-#   an image which will be placed on top of the thumbnail, a defualt image
-#   incase a custom image for the thumbnail isn't provided.
-
 # LOWPRIORITY Add more customization (Read authors, read upvote count, etc...)
 #   More ideas for cusstomization: Skip over comments that are longer that N characters
 
@@ -439,6 +432,4 @@ def video_from_json(videoexport, reddit):
     video_path = organize_work_directory(data=r_data, videoexport=videoexport)
     generate_clips_folder_only(videopath=video_path, videoexport=videoexport, asset_clips=assets)
 
-    text_data = auto_thumbnail.get_thumbnail_text(text=r_data['general']['title'], data=videoexport)
-    thumbnail = auto_thumbnail.draw_colored_text(text_data=text_data, data=videoexport)
-    thumbnail.save(videoexport['video']['save_under'] + videoexport['info']['submission_id'] + ".png")
+    auto_thumbnail.generate_thumbnail(data=r_data, videoexport=videoexport)

@@ -33,7 +33,8 @@
       "template_image": "Flavor/TEMPLATE.png",
       "overlay_image": "",
       "default_overlay": "Flavor/ICON960X900.png",
-      "font_path": "Flavor/FONT.otf"
+      "font_path": "Flavor/FONT.otf",
+      "image_mask": "Flavor/IMAGE_MASK.png"
     },
     "font": {
       "pt_size": 102,
@@ -52,8 +53,8 @@
       "number_of_lines": 5
     },
     "construction": {
-      "image_position": [900, 75],
-      "image_size": [960, 900]
+      "image_position": [800, 0],
+      "image_size": [1120, 1080]
     }
   }
 }

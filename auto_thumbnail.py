@@ -23,22 +23,6 @@ def smart_resize(image, new_res):
         return resized_image
 
 
-# crops image from center, or if new res is bigger than image it proportionally resizes
-def crop_image(image, new_res):
-    old_res = image.size
-    if new_res[0] > old_res[0] or new_res[1] > old_res[1]:
-        resized_image = smart_resize(image=image, new_res=new_res)
-        return resized_image
-    else:
-        top = math.floor((old_res[1]-new_res[1]) / 2)
-        bottom = top + new_res[1]
-        left = math.floor((old_res[0]-new_res[0]) / 2)
-        right = left + new_res[0]
-
-        cropped_image = image.crop((left, top, right, bottom))
-        return cropped_image
-
-
 # get the foundation of the thumbnail provided data (see videogen.py for what does "data" mean)
 def get_basic_thumbnail(data, crop=True):
     base = Image.open(data['thumbnail_data']['assets']['template_image'])
@@ -50,8 +34,13 @@ def get_basic_thumbnail(data, crop=True):
         overlayimage = Image.open(data['thumbnail_data']['assets']['default_overlay'])
 
     if crop and overlayimage.size != data['thumbnail_data']['construction']['image_size']:
-        overlayimage = crop_image(image=overlayimage, new_res=data['thumbnail_data']['construction']['image_size'])
+        overlayimage = smart_resize(image=overlayimage, new_res=data['thumbnail_data']['construction']['image_size'])
 
+    if data['thumbnail_data']['assets']['image_mask']:
+        image_alpha = Image.open(data['thumbnail_data']['assets']['image_mask'])
+        image_alpha = image_alpha.convert('L')
+        image_alpha = image_alpha.resize(overlayimage.size)
+        overlayimage.putalpha(image_alpha)
     base.paste(overlayimage, data['thumbnail_data']['construction']['image_position'], overlayimage)
     return base
 
@@ -191,3 +180,13 @@ def draw_colored_text(text_data, data, font=None, image=None):
 
             last_color = word_color
     return base
+
+
+# path is retrived from videoexport by default, can be specified otherwise
+def generate_thumbnail(data, videoexport, path=None):
+    text_data = get_thumbnail_text(text=data['general']['title'], data=videoexport)
+    thumbnail = draw_colored_text(text_data=text_data, data=videoexport)
+    if path:
+        thumbnail.save(path)
+    else:
+        thumbnail.save(videoexport['video']['save_under'] + videoexport['info']['submission_id'] + ".png")
