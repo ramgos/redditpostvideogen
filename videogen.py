@@ -12,7 +12,9 @@ from pathlib import Path
 import math
 import auto_thumbnail
 import shutil
+from copy import deepcopy
 from mutagen.wave import WAVE
+import re
 
 '''
 NOTE: Known issue: if you have a whitespace in your path it would cause errors
@@ -21,8 +23,6 @@ when trying to synthesize audio clips
 
 # LOWPRIORITY Add more customization (Read authors, read upvote count, etc...)
 #   More ideas for cusstomization: Skip over comments that are longer that N characters
-
-# load private information
 
 
 def balcon_tts(voicename, speed, volume, outputfile, text):
@@ -33,12 +33,13 @@ def balcon_tts(voicename, speed, volume, outputfile, text):
 
     finalvoicename = '"' + voicename + '"'
     template = "balcon -n {voicename} -s {speed} -v {volume} -w {outputfile} -f {inputfile}"
-    command = template.format \
-        (voicename=finalvoicename,
-         speed=speed,
-         volume=volume,
-         outputfile=outputfile,
-         inputfile=str(wrkdir) + "/textholder.txt")
+    command = template.format(
+        voicename=finalvoicename,
+        speed=speed,
+        volume=volume,
+        outputfile=outputfile,
+        inputfile=str(wrkdir) + "/textholder.txt"
+    )
 
     subprocess.run(command)
     os.remove(str(wrkdir) + "/textholder.txt")
@@ -50,6 +51,25 @@ def resize_to_screenbounds(filename, filedest, resolution=(1920, 1080)):
     resized_image.save(filedest, format='png')
 
 
+# In the latest PRAW version (8.4.2021) comment objects were changed
+# to include MoreComments object in them, so simply iterating over all comments
+# in a for loop isn't viable
+def get_reddit_comment(index, comments_object):
+    more_comments_type = type(comments_object[-1])
+
+    i = 0
+    while index > (len(comments_object) - 1):
+        if type(comments_object[i]) == more_comments_type:  # check if item is a MoreComments type
+            more_comments = comments_object.pop(i).comments()
+            comments_object += more_comments
+        i += 1
+    while type(comments_object[index]) == more_comments_type:
+        more_comments = comments_object.pop(index).comments()
+        comments_object += more_comments
+
+    return comments_object[index]
+
+
 # screenshot a webpage element given a selector, a webdriver and a file name to save to
 def screenshot_element(csselctor, driver, file_location, wait_for_element_to_load):
     try:
@@ -58,12 +78,12 @@ def screenshot_element(csselctor, driver, file_location, wait_for_element_to_loa
         )
     except TimeoutException:
         print("Something went wrong while waiting for an element to load...")
-        return
-    image = driver.find_element \
-        (By.CSS_SELECTOR, csselctor)
+        return False
+    image = driver.find_element(By.CSS_SELECTOR, csselctor)
     driver.execute_script("arguments[0].scrollIntoView();", image)
     sleep(3)
     image.screenshot(file_location)
+    return True
 
 
 # screenshot reddit thread provided data from def get_reddit_data() and a working directory
@@ -96,8 +116,7 @@ def screenshot_thread(data, wrkdir, videoexport, headless=True):
     except TimeoutException:
         print("Something went wrong while waiting for an element to load...")
         return False
-    fox.find_element \
-        (By.XPATH, "//*[text()[contains(.,'Night Mode')]]").click()
+    fox.find_element(By.XPATH, "//*[text()[contains(.,'Night Mode')]]").click()
 
     sleep(videoexport['technical']['wait_between_actions'])
     try:
@@ -107,26 +126,38 @@ def screenshot_thread(data, wrkdir, videoexport, headless=True):
     except TimeoutException:
         print("Something went wrong while waiting for an element to load...")
         return False
-    fox.find_element \
-        (By.XPATH, "//*[text()[contains(.,'View Entire Disc')]]").click()
+    fox.find_element(By.XPATH, "//*[text()[contains(.,'View Entire Disc')]]").click()
 
     # screenshot body
-    screenshot_element \
-        (
-            "#" + data['general']['css-selector'],
-            fox,
-            wrkdir + data['general']['id'] + '.png',
-            videoexport['technical']['wait_for_elements_to_load']
-        )
+    screenshot_element(
+        "#" + data['general']['css-selector'],
+        fox,
+        wrkdir + data['general']['id'] + '.png',
+        videoexport['technical']['wait_for_elements_to_load']
+    )
 
     # a bit of a mess, but essentially it means: iterate over every
     # comment, but slice it so it will only take the comments it gathered data about
-    for comment in data['general']['comments'][:len(data['comment_data'])]:
-        screenshot_element("#" + comment.name, fox, wrkdir + comment.id + '.png',
-                           videoexport['technical']['wait_for_elements_to_load'])
+
+    comment_data_modified = []
+
+    for comment in data['comment_data']:
+        status = screenshot_element(
+            "#" + comment['name'], fox, wrkdir + comment['id'] + '.png',
+            videoexport['technical']['wait_for_elements_to_load'])
+
+        if status:
+            comment_data_modified.append(comment)
+
+        more_replies = fox.find_elements(By.CSS_SELECTOR, "[id$=moreComments]")
+        if more_replies:
+            fox.execute_script("arguments[0].scrollIntoView();", more_replies[-1])
+            more_replies[-1].click()
+
+        print("Screenshot")
 
     fox.close()
-    return True
+    return comment_data_modified
 
 
 # return all relevant regarding a reddit thread as a dictionary containing the body and comments
@@ -137,8 +168,7 @@ def grab_reddit_data(submission_id, reddit, videoexport):
     # target_submission.comment_sort = "top"
 
     # general data regarding the post
-    main_post_dict = \
-        {
+    main_post_dict = {
             "id": submission_id,
             "title": target_submission.title,
             "body": target_submission.selftext,
@@ -147,28 +177,34 @@ def grab_reddit_data(submission_id, reddit, videoexport):
             "comments": target_submission.comments,
             "author": target_submission.author,
             "url": target_submission.url,
-            "css-selector": target_submission.name
-        }
+            "css-selector": target_submission.name}
 
     reddit_data = {"general": main_post_dict}
     comment_data = []
     if bool(videoexport['video']['comment_size_is_seconds']):
         counter = 0
-        for comment in target_submission.comments:
+        i = 0  # number of iteration in the while loop
+
+        comments = deepcopy(target_submission.comments)
+        comments = list(comments)  # get all top level comments as a list
+
+        while counter < videoexport['video']['comment_size']:
+            comment = get_reddit_comment(i, comments)
             cmnt = {
-                    "id": comment.id,
-                    "author": comment.author,
-                    "body": comment.body
-                }
+                "id": comment.id,
+                "author": comment.author,
+                "body": re.sub(r'\\\B', r'', comment.body),
+                "name": comment.name
+            }
             comment_data.append(cmnt)
             tmplocation = "tmp/" + comment.id + ".mp3"
 
-            balcon_tts\
-                (voicename=videoexport['tts']['voice'],
-                 speed=videoexport['tts']['speed'],
-                 volume=videoexport['tts']['volume'],
-                 outputfile=tmplocation,
-                 text=cmnt['body'])
+            balcon_tts(
+                voicename=videoexport['tts']['voice'],
+                speed=videoexport['tts']['speed'],
+                volume=videoexport['tts']['volume'],
+                outputfile=tmplocation,
+                text=cmnt['body'])
 
             audio = WAVE(tmplocation)
             audio_info = audio.info
@@ -176,20 +212,29 @@ def grab_reddit_data(submission_id, reddit, videoexport):
 
             counter += length
 
-            if counter >= videoexport['video']['comment_size']:
-                break
+            i += 1
+
         shutil.rmtree("tmp")
         os.mkdir("tmp")
     else:
-        # data is what will be returned by the function
+        i = 0  # number of iteration in the while loop
 
-        for comment in target_submission.comments[:videoexport['video']['comment_size']]:
+        comments = deepcopy(target_submission.comments)
+        comments = list(comments)  # get all top level comments as a list
+
+        more_comments_type = type(comments[-1])  # store type of more_comments_type
+
+        while i < videoexport['video']['comment_size']:
+            comment = get_reddit_comment(i, comments)
             cmnt = {
-                    "id": comment.id,
-                    "author": comment.author,
-                    "body": comment.body
-                }
+                "id": comment.id,
+                "author": comment.author,
+                "body": re.sub(r'\\\B', r'', comment.body),
+                "name": comment.name
+            }
             comment_data.append(cmnt)
+
+            i += 1
 
     reddit_data['comment_data'] = comment_data
     return reddit_data
@@ -236,7 +281,6 @@ def organize_work_directory(data, videoexport):
     basepath = "videos/"
 
     general = data['general']
-    comment_data = data['comment_data']
 
     # creating all needed folders
     mkdir_ifnotexist(cwd + "/videos")
@@ -249,13 +293,15 @@ def organize_work_directory(data, videoexport):
     mkdir_ifnotexist(videopath + "comments/")
     mkdir_ifnotexist(videopath + "body/")
 
-    success = screenshot_thread(data=data, wrkdir=videopath + "screenshots/", videoexport=videoexport, headless=True)
+    comment_data = screenshot_thread(
+        data=data,
+        wrkdir=videopath + "screenshots/",
+        videoexport=videoexport,
+        headless=True)
 
-    # TODO Handle screenshot errors
-    if success:
-        print("success! screenshots saved succesfully")
-    else:
-        print(":(")
+    if not comment_data:
+        # TODO Handle Screenshot exception handling
+        print("Handle empty comment data here")
 
     bodydest = videopath + "body/" + general['id']
     bodysrc = videopath + "screenshots/" + general['id'] + ".png"
@@ -272,12 +318,12 @@ def organize_work_directory(data, videoexport):
         additional_text += " "
         additional_text += general['body']
 
-    balcon_tts \
-        (voicename=videoexport['tts']['voice'],
-         speed=videoexport['tts']['speed'],
-         volume=videoexport['tts']['volume'],
-         outputfile=bodysaveunder,
-         text=general['title'] + additional_text)
+    balcon_tts(
+        voicename=videoexport['tts']['voice'],
+        speed=videoexport['tts']['speed'],
+        volume=videoexport['tts']['volume'],
+        outputfile=bodysaveunder,
+        text=general['title'] + additional_text)
 
     for comment in comment_data:
         dest = videopath + "comments/" + comment['id'] + "/"
@@ -288,15 +334,13 @@ def organize_work_directory(data, videoexport):
         dest_path = Path(dest + comment['id'] + ".png")
         resize_to_screenbounds(filename=src_path, filedest=dest_path)
 
-        # engine.save_to_file(comment['body'], dest + comment['id'] + ".mp3")
-        # engine.runAndWait()
         commentsaveunder = dest + comment['id'] + ".mp3"
-        balcon_tts \
-            (voicename=videoexport['tts']['voice'],
-             speed=videoexport['tts']['speed'],
-             volume=videoexport['tts']['volume'],
-             outputfile=commentsaveunder,
-             text=comment['body'])
+        balcon_tts(
+            voicename=videoexport['tts']['voice'],
+            speed=videoexport['tts']['speed'],
+            volume=videoexport['tts']['volume'],
+            outputfile=commentsaveunder,
+            text=comment['body'])
 
     return videopath
 
@@ -372,8 +416,7 @@ def generate_clips_folder_only(videopath, videoexport, asset_clips):
 
     # generate clip for body
     bodymp3_path = videopath + "body/" + [each for each in os.listdir(videopath + "body/") if each.endswith('.mp3')][0]
-    bodyimage_path = videopath + "body/" + [each for each in os.listdir(videopath + "body/") if each.endswith('.png')][
-        0]
+    bodyimage_path = videopath + "body/" + [each for each in os.listdir(videopath + "body/") if each.endswith('.png')][0]
 
     bodyimage_audio = AudioFileClip(bodymp3_path)
     bodyimage = ImageClip(bodyimage_path).set_duration(bodyimage_audio.duration +

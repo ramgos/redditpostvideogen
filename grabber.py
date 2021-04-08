@@ -20,7 +20,7 @@ reddit = praw.Reddit(
 
 base = json.load(open("videoexport.json"))
 
-posts = ['lx492p']
+posts = ['mawiau', 'makbxa', 'mal0us', 'mabs9v', 'm9xmms']
 submissions = []
 
 for post_id in posts:
