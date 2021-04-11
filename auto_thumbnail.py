@@ -183,10 +183,13 @@ def draw_colored_text(text_data, data, font=None, image=None):
 
 
 # path is retrived from videoexport by default, can be specified otherwise
-def generate_thumbnail(data, videoexport, path=None):
+def generate_thumbnail(data, videoexport, path=None, thumbnail_count=0):
     text_data = get_thumbnail_text(text=data['general']['title'], data=videoexport)
     thumbnail = draw_colored_text(text_data=text_data, data=videoexport)
     if path:
         thumbnail.save(path)
     else:
-        thumbnail.save(videoexport['video']['save_under'] + videoexport['info']['submission_id'] + ".png")
+        thumbnail.save(
+            videoexport['video']['save_under'] +
+            videoexport['info']['submission_id'] + str(thumbnail_count) + ".png"
+        )

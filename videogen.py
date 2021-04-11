@@ -14,6 +14,7 @@ import auto_thumbnail
 import shutil
 from copy import deepcopy
 from mutagen.wave import WAVE
+from praw.models import MoreComments
 import re
 
 '''
@@ -55,15 +56,13 @@ def resize_to_screenbounds(filename, filedest, resolution=(1920, 1080)):
 # to include MoreComments object in them, so simply iterating over all comments
 # in a for loop isn't viable
 def get_reddit_comment(index, comments_object):
-    more_comments_type = type(comments_object[-1])
-
     i = 0
     while index > (len(comments_object) - 1):
-        if type(comments_object[i]) == more_comments_type:  # check if item is a MoreComments type
+        if type(comments_object[i]) == MoreComments:  # check if item is a MoreComments type
             more_comments = comments_object.pop(i).comments()
             comments_object += more_comments
         i += 1
-    while type(comments_object[index]) == more_comments_type:
+    while type(comments_object[index]) == MoreComments:
         more_comments = comments_object.pop(index).comments()
         comments_object += more_comments
 
@@ -154,8 +153,6 @@ def screenshot_thread(data, wrkdir, videoexport, headless=True):
             fox.execute_script("arguments[0].scrollIntoView();", more_replies[-1])
             more_replies[-1].click()
 
-        print("Screenshot")
-
     fox.close()
     return comment_data_modified
 
@@ -193,9 +190,10 @@ def grab_reddit_data(submission_id, reddit, videoexport):
             cmnt = {
                 "id": comment.id,
                 "author": comment.author,
-                "body": re.sub(r'\\\B', r'', comment.body),
+                "body": comment.body,
                 "name": comment.name
             }
+
             comment_data.append(cmnt)
             tmplocation = "tmp/" + comment.id + ".mp3"
 
@@ -204,7 +202,7 @@ def grab_reddit_data(submission_id, reddit, videoexport):
                 speed=videoexport['tts']['speed'],
                 volume=videoexport['tts']['volume'],
                 outputfile=tmplocation,
-                text=cmnt['body'])
+                text=re.sub(r'\\\B', r'', cmnt['body']))
 
             audio = WAVE(tmplocation)
             audio_info = audio.info
@@ -222,16 +220,15 @@ def grab_reddit_data(submission_id, reddit, videoexport):
         comments = deepcopy(target_submission.comments)
         comments = list(comments)  # get all top level comments as a list
 
-        more_comments_type = type(comments[-1])  # store type of more_comments_type
-
         while i < videoexport['video']['comment_size']:
             comment = get_reddit_comment(i, comments)
             cmnt = {
                 "id": comment.id,
                 "author": comment.author,
-                "body": re.sub(r'\\\B', r'', comment.body),
+                "body": comment.body,
                 "name": comment.name
             }
+
             comment_data.append(cmnt)
 
             i += 1
@@ -310,10 +307,9 @@ def organize_work_directory(data, videoexport):
     bodysrc_path = Path(bodysrc)
 
     resize_to_screenbounds(filename=bodysrc_path, filedest=bodydest_path)
-    # engine.save_to_file(general['title'], bodydest + ".mp3")
-    # engine.runAndWait()
     bodysaveunder = bodydest + ".mp3"
     additional_text = ""  # text that comes in addition after the reading of the title
+
     if bool(videoexport['video']['read_title_body']):
         additional_text += " "
         additional_text += general['body']
@@ -323,7 +319,7 @@ def organize_work_directory(data, videoexport):
         speed=videoexport['tts']['speed'],
         volume=videoexport['tts']['volume'],
         outputfile=bodysaveunder,
-        text=general['title'] + additional_text)
+        text=re.sub(r'\\\B', r'', general['title'] + additional_text))
 
     for comment in comment_data:
         dest = videopath + "comments/" + comment['id'] + "/"
@@ -340,7 +336,7 @@ def organize_work_directory(data, videoexport):
             speed=videoexport['tts']['speed'],
             volume=videoexport['tts']['volume'],
             outputfile=commentsaveunder,
-            text=comment['body'])
+            text=re.sub(r'\\\B', r'', comment['body']))
 
     return videopath
 
@@ -475,4 +471,5 @@ def video_from_json(videoexport, reddit):
     video_path = organize_work_directory(data=r_data, videoexport=videoexport)
     generate_clips_folder_only(videopath=video_path, videoexport=videoexport, asset_clips=assets)
 
-    auto_thumbnail.generate_thumbnail(data=r_data, videoexport=videoexport)
+    for i in range(5):
+        auto_thumbnail.generate_thumbnail(data=r_data, videoexport=videoexport, thumbnail_count=i)

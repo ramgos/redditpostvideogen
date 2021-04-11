@@ -9,7 +9,7 @@
   },
   "video": {
     "fps": 15,
-    "bgaudiovolume": 0.2,
+    "bgaudiovolume": 0.05,
     "res": [1920, 1080],
     "wait_before_start": 0.5,
     "wait_between_comments": 0,
@@ -17,7 +17,7 @@
     "read_title_body": 1,
     "save_under": "hidden/",
     "comment_size_is_seconds": 1,
-    "comment_size": 600
+    "comment_size": 720
   },
   "assets": {
     "videobg": "Flavor/BG.mp4",

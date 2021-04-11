@@ -9,6 +9,9 @@ import os
 # load credentials
 credentials = json.load(open("config.json"))
 
+with open('posted.txt', 'r') as f:
+    posted = [x.replace('\n', '') for x in f.readlines()]
+
 # create reddit client
 reddit = praw.Reddit(
     client_id=credentials['client_id'],
@@ -20,19 +23,27 @@ reddit = praw.Reddit(
 
 base = json.load(open("videoexport.json"))
 
-posts = ['mawiau', 'makbxa', 'mal0us', 'mabs9v', 'm9xmms']
-submissions = []
+posts = ['mo36yy', 'mny64z', 'mo4czv', 'mnvx6x', 'mnxhgt']
+only_new_posts = [x for x in posts if x not in posted]
+print(only_new_posts)
 
-for post_id in posts:
-    videoexport = deepcopy(base)
-    videoexport['info']['submission_id'] = post_id
-    videoexport['thumbnail_data']['assets']['overlay_image'] = \
-        "hidden/sauce/" + random.choice(os.listdir("hidden/sauce/"))
-    submissions.append(videoexport)
+if only_new_posts:
+    submissions = []
 
-for export in submissions:
-    videogen.video_from_json(export, reddit)
-    sleep(5)
+    with open('posted.txt', 'a') as f:
+        for post in posts:
+            f.write(post + '\n')
+
+    for post_id in posts:
+        videoexport = deepcopy(base)
+        videoexport['info']['submission_id'] = post_id
+        videoexport['thumbnail_data']['assets']['overlay_image'] = \
+            "hidden/sauce/" + random.choice(os.listdir("hidden/sauce/"))
+        submissions.append(videoexport)
+
+    for export in submissions:
+        videogen.video_from_json(export, reddit)
+        sleep(5)
 
 
 '''
