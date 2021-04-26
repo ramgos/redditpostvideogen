@@ -15,6 +15,7 @@ import shutil
 from copy import deepcopy
 from mutagen.wave import WAVE
 from praw.models import MoreComments
+import random
 import re
 
 '''
@@ -472,4 +473,7 @@ def video_from_json(videoexport, reddit):
     generate_clips_folder_only(videopath=video_path, videoexport=videoexport, asset_clips=assets)
 
     for i in range(5):
-        auto_thumbnail.generate_thumbnail(data=r_data, videoexport=videoexport, thumbnail_count=i)
+        modified_videoexport = deepcopy(videoexport)
+        modified_videoexport['thumbnail_data']['assets']['overlay_image'] = \
+            "hidden/sauce/" + random.choice(os.listdir("hidden/sauce/"))
+        auto_thumbnail.generate_thumbnail(data=r_data, videoexport=modified_videoexport, thumbnail_count=i)

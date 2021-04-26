@@ -23,7 +23,7 @@ reddit = praw.Reddit(
 
 base = json.load(open("videoexport.json"))
 
-posts = ['mo36yy', 'mny64z', 'mo4czv', 'mnvx6x', 'mnxhgt']
+posts = ['my7b6s', 'mxx3ag']
 only_new_posts = [x for x in posts if x not in posted]
 print(only_new_posts)
 

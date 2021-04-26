@@ -76,7 +76,7 @@ def get_thumbnail_text(text, data, font=None):
 
     # some regex action to find the locations of the keywords in the original text
     for phrase in phrases:
-        pattern = re.compile(r"\b{phrase}\b".format(phrase=phrase), flags=re.I)
+        pattern = re.compile(r"\b{phrase}\b".format(phrase=re.escape(phrase)), flags=re.I)
         match = re.search(pattern, text)
         if match:
             marked_phrases.append((phrase, (match.start(), match.end())))
